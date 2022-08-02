@@ -1,0 +1,29 @@
+﻿<MudThemeProvider @ref="@mudThemeProvider" IsDarkMode="@isDarkMode" Theme="@theme" />
+
+@code {
+    private bool isDarkMode = true;
+    private MudThemeProvider mudThemeProvider = default!;
+    private MudTheme theme = new()
+    {
+        //Palette = new Palette()
+        //{
+        //    Primary = Colors.Blue.Default,
+        //    Secondary = Colors.Orange.Default,
+        //},
+        //PaletteDark = new Palette()
+        //{
+        //    Primary = Colors.BlueGrey.Darken4,
+        //    Secondary = Colors.Blue.Darken4,
+        //    Background = Colors.Grey.Darken4,
+        //},
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            this.isDarkMode = await this.mudThemeProvider.GetSystemPreference();
+            StateHasChanged();
+        }
+    }
+}

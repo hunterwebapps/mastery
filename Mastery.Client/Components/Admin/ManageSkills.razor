@@ -1,0 +1,83 @@
+﻿@using Fluxor
+@using Mastery.Client.Store
+@using Mastery.Client.Store.Skills
+@using Mastery.Client.Store.Skills.Actions
+@using Mastery.Models.Skills
+@inject ApiProvider apiProvider
+@inject IDispatcher dispatcher
+@inject IState<SkillsState> skillsState
+
+<EditForm Model="createSkillBindingModel" OnValidSubmit="HandleSubmit">
+    <DataAnnotationsValidator />
+
+    <MudCard>
+        <MudCardContent>
+            <MudGrid>
+                <MudItem xs="12">
+
+                    <MudTextField Label="Name" @bind-Value="createSkillBindingModel.Name" />
+
+                </MudItem>
+
+                <MudItem xs="12">
+
+                    <MudTextField Label="Description" Lines="3" @bind-Value="createSkillBindingModel.Description" />
+
+                </MudItem>
+
+                <MudItem xs="12">
+
+                    <InputFile id="skillImageUpload" OnChange="HandleUploadImage" hidden accept=".jpg,.jpeg,.png,.webp,.svg" />
+                    <MudButton HtmlTag="label" Variant="Variant.Outlined" for="skillImageUpload" StartIcon="@Icons.Filled.CloudUpload">Upload</MudButton>
+
+                </MudItem>
+
+                <MudItem xs="12">
+
+                    <MudButton Variant="Variant.Filled">Create Skill</MudButton>
+
+                </MudItem>
+            </MudGrid>
+        </MudCardContent>
+    </MudCard>
+</EditForm>
+
+@if (skillsState.Value.Skills != null)
+{
+    foreach (var skill in skillsState.Value.Skills)
+    {
+        <MudText Typo="Typo.body1">
+            @skill
+        </MudText>
+    }    
+}
+else
+{
+    <MudText Typo="Typo.body1">
+        No Skills...
+    </MudText>
+}
+
+@code {
+    CreateSkillBindingModel createSkillBindingModel = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var fetchSkillsAction = new FetchSkillsAction(apiProvider);
+        await fetchSkillsAction.FetchSkillsAsync();
+        dispatcher.Dispatch(fetchSkillsAction);
+    }
+
+    private void HandleUploadImage(InputFileChangeEventArgs e)
+    {
+        var entries = e.GetMultipleFiles();
+        //Do your validations here
+
+        //TODO upload the files to the server
+    }
+
+    void HandleSubmit()
+    {
+        
+    }
+}

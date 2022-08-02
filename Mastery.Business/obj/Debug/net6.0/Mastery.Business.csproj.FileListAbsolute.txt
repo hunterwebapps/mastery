@@ -1,0 +1,17 @@
+C:\repos\Mastery\Mastery.Business\bin\Debug\net6.0\Mastery.Business.deps.json
+C:\repos\Mastery\Mastery.Business\bin\Debug\net6.0\Mastery.Business.dll
+C:\repos\Mastery\Mastery.Business\bin\Debug\net6.0\Mastery.Business.pdb
+C:\repos\Mastery\Mastery.Business\bin\Debug\net6.0\Mastery.DataAccess.dll
+C:\repos\Mastery\Mastery.Business\bin\Debug\net6.0\Mastery.Models.dll
+C:\repos\Mastery\Mastery.Business\bin\Debug\net6.0\Mastery.DataAccess.pdb
+C:\repos\Mastery\Mastery.Business\bin\Debug\net6.0\Mastery.Models.pdb
+C:\repos\Mastery\Mastery.Business\obj\Debug\net6.0\Mastery.Business.csproj.AssemblyReference.cache
+C:\repos\Mastery\Mastery.Business\obj\Debug\net6.0\Mastery.Business.GeneratedMSBuildEditorConfig.editorconfig
+C:\repos\Mastery\Mastery.Business\obj\Debug\net6.0\Mastery.Business.AssemblyInfoInputs.cache
+C:\repos\Mastery\Mastery.Business\obj\Debug\net6.0\Mastery.Business.AssemblyInfo.cs
+C:\repos\Mastery\Mastery.Business\obj\Debug\net6.0\Mastery.Business.csproj.CoreCompileInputs.cache
+C:\repos\Mastery\Mastery.Business\obj\Debug\net6.0\Mastery.Business.csproj.CopyComplete
+C:\repos\Mastery\Mastery.Business\obj\Debug\net6.0\Mastery.Business.dll
+C:\repos\Mastery\Mastery.Business\obj\Debug\net6.0\refint\Mastery.Business.dll
+C:\repos\Mastery\Mastery.Business\obj\Debug\net6.0\Mastery.Business.pdb
+C:\repos\Mastery\Mastery.Business\obj\Debug\net6.0\ref\Mastery.Business.dll

@@ -1,0 +1,181 @@
+﻿@page "/quest-designer"
+@using Mastery.Client.Store
+@using Mastery.Client.Utils
+@using Mastery.Models.Quest
+@inject ApiProvider apiProvider
+
+<PageTitle>Quest Designer</PageTitle>
+
+<EditForm Model="QuestBindingModel">
+    <ObjectGraphDataAnnotationsValidator />
+
+    @*<div class="form-group">
+        <label for="title">Title</label>
+        <SfTextBox id="title" @bind-Value="QuestBindingModel.Title" />
+        <ValidationMessage For="@(() => QuestBindingModel.Title)" />
+    </div>
+
+    <div class="form-group">
+        <label for="description">Description</label>
+        <SfTextBox id="description" @bind-Value="QuestBindingModel.Description" Multiline="true" />
+        <ValidationMessage For="@(() => QuestBindingModel.Description)" />
+    </div>
+
+    <div class="form-group">
+        <label for="objective">Objective</label>
+        <SfTextBox id="objective" @bind-Value="QuestBindingModel.Objective" />
+        <ValidationMessage For="@(() => QuestBindingModel.Objective)" />
+    </div>*@
+
+    <div class="form-group">
+        <label for="splashImage">Splash Image</label>
+        @*<SfUploader ID="splashImage" AllowMultiple="false">
+            <UploaderAsyncSettings SaveUrl="images" />
+        </SfUploader>*@
+    </div>
+
+    <h2>Events</h2>
+
+@*    <SfButton type="button" @onclick="HandleClickAddEvent">
+        Add Event
+    </SfButton>*@
+
+    <div class="row">
+        <div class="container">
+            @*<SfDiagramComponent @ref="@diagram" Nodes="@nodes" Connectors="@connectors" Width="100%" Height="600px" />*@
+        </div>
+    </div>
+
+    @foreach (var eventBindingModel in QuestBindingModel.EventBindingModels)
+    {
+        <div class="card">
+            <div class="container">
+
+                <div class="form-group">
+                    <label for="eventType">Event Type</label>
+                    <select class="form-control" id="eventType" name="eventType" @bind="eventBindingModel.EventTypeId">
+                        @for (var i = 0; i < eventTypes.Length; i++)
+                        {
+                            <option value="@i">@eventTypes[i]</option>
+                        }
+                    </select>
+                    <ValidationMessage For="@(() => eventBindingModel.EventTypeId)" />
+                </div>
+
+                <div class="form-group">
+                    <label for="eventDescription">Description</label>
+                    <InputText type="text" id="eventDescription" class="form-control" @bind-Value="eventBindingModel.Description" />
+                </div>
+
+                <hr>
+
+                @foreach (var decisionBindingModel in eventBindingModel.DecisionBindingModels)
+                {
+                    <div class="form-group">
+                        <label for="description">Description</label>
+                        <InputText type="text" id="description" class="form-control" @bind-Value="decisionBindingModel.Description" />
+                        <ValidationMessage For="@(() => decisionBindingModel.Description)" />
+                    </div>
+
+                    @foreach (var activityBindingModel in decisionBindingModel.ActivityBindingModels)
+                    {
+                        <div class="form-group">
+                            <label for="activityType">Activity Type</label>
+                            <select class="form-control" id="activityType" name="activityType" @bind="activityBindingModel.ActivityTypeId">
+                                @for (var i = 0; i < activityTypes.Length; i++)
+                                {
+                                    <option value="@i">@activityTypes[i]</option>
+                                }
+                            </select>
+                            <ValidationMessage For="@(() => activityBindingModel.ActivityTypeId)" />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="nextEvent">Next Event</label>
+                            <select class="form-control" @bind="activityBindingModel.NextEventIndex">
+                                @for (var i = 0; i < QuestBindingModel.EventBindingModels.Count; i++)
+                                {
+                                    <option value="@i">Test</option>
+                                }
+                            </select>
+                        </div>
+                    }
+
+                    <div class="row">
+                        <div class="col-12">
+                            <button class="btn btn-secondary" @onclick="() => HandleClickAddActivity(decisionBindingModel)">Add Activity</button>
+                        </div>
+                    </div>
+                }
+
+                <div class="row">
+                    <div class="col-12">
+                        <button class="btn btn-secondary" @onclick="() => HandleClickAddDecision(eventBindingModel)">Add Decision</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <div class="row">
+        <div class="col-12">
+            <button class="btn btn-primary" type="submit" @onclick="HandleSubmit">
+                Submit
+            </button>
+        </div>
+    </div>
+
+</EditForm>
+
+@code {
+    CreateQuestBindingModel QuestBindingModel = new();
+
+    private CreateQuestBindingModel MakeCreateQuestBindingModel()
+    {
+        return new CreateQuestBindingModel()
+        {
+
+        };
+    }
+
+    string[] eventTypes = new[]
+    {
+        "Gym",
+        "Work",
+        "Study",
+    };
+
+    string[] activityTypes = new[]
+    {
+        "Workout",
+        "Work out half-ass",
+        "Read",
+        "Skip School",
+    };
+
+    void HandleClickAddEvent()
+    {
+        this.QuestBindingModel
+            .EventBindingModels
+            .Add(new CreateEventBindingModel());
+    }
+
+    void HandleClickAddDecision(CreateEventBindingModel eventBindingModel)
+    {
+        eventBindingModel
+            .DecisionBindingModels
+            .Add(new CreateDecisionBindingModel());
+    }
+
+    void HandleClickAddActivity(CreateDecisionBindingModel decisionBindingModel)
+    {
+        decisionBindingModel
+            .ActivityBindingModels
+            .Add(new CreateActivityBindingModel());
+    }
+
+    async Task HandleSubmit()
+    {
+        await this.apiProvider.QuestApi.CreateQuestAsync(QuestBindingModel);
+    }
+}

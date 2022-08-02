@@ -1,0 +1,60 @@
+﻿@inherits LayoutComponentBase
+
+<div class="page">
+
+    <main>
+        <div class="top-row">
+            <MudAppBar Color="Color.Primary" Fixed="false">
+                <MudIconButton Icon="@Icons.Material.Filled.Menu" Edge="Edge.Start" OnClick="() => isDrawerOpen = !isDrawerOpen" />
+
+                <MudNavLink Href="/" Match="NavLinkMatch.All">
+                    Home
+                </MudNavLink>
+
+                <MudNavLink Href="/quest-designer">
+                    Quest Designer
+                </MudNavLink>
+
+                <MudNavLink Href="/admin/setup">
+                    Admin Panel
+                </MudNavLink>
+
+                <MudSpacer />
+
+                <MudIconButton Icon="@Icons.Custom.Brands.GitHub" />
+            </MudAppBar>
+        </div>
+
+        <MudDrawer @bind-Open="isDrawerOpen" Anchor="Anchor.Left" Elevation="1" Variant="DrawerVariant.Temporary">
+            <MudDrawerHeader>
+                <MudText Typo="Typo.h6">Mastery</MudText>
+            </MudDrawerHeader>
+            <MudNavMenu>
+                <MudNavLink Href="/" Match="NavLinkMatch.All">
+                    Home
+                </MudNavLink>
+
+                <MudNavLink Href="/quest-designer">
+                    Quest Designer
+                </MudNavLink>
+
+                <MudNavLink Href="/admin/setup">
+                    Admin Panel
+                </MudNavLink>
+            </MudNavMenu>
+        </MudDrawer>
+
+        <article class="content">
+            @Body
+        </article>
+    </main>
+</div>
+
+@code {
+    bool isDrawerOpen = false;
+
+    void HandleClickOpenDrawer()
+    {
+        this.isDrawerOpen = true;
+    }
+}
