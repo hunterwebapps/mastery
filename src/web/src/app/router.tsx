@@ -2,6 +2,13 @@ import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import { RootLayout } from './root-layout'
 
 const router = createBrowserRouter([
+  // Onboarding route (outside main layout)
+  {
+    path: '/onboarding',
+    lazy: () => import('@/features/onboarding/pages/onboarding-page'),
+  },
+
+  // Main authenticated routes
   {
     path: '/',
     element: <RootLayout />,
@@ -21,6 +28,10 @@ const router = createBrowserRouter([
       {
         path: 'check-in',
         lazy: () => import('@/features/check-ins/pages/check-in-page'),
+      },
+      {
+        path: 'profile',
+        lazy: () => import('@/features/profile/pages/profile-page'),
       },
     ],
   },

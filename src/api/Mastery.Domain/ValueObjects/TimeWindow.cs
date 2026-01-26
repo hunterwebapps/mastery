@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Mastery.Domain.Common;
 using Mastery.Domain.Exceptions;
 
@@ -8,7 +9,15 @@ public sealed class TimeWindow : ValueObject
     public TimeOnly Start { get; }
     public TimeOnly End { get; }
 
-    private TimeWindow(TimeOnly start, TimeOnly end)
+    // Required for EF Core and JSON deserialization
+    private TimeWindow()
+    {
+        Start = default;
+        End = default;
+    }
+
+    [JsonConstructor]
+    public TimeWindow(TimeOnly start, TimeOnly end)
     {
         Start = start;
         End = end;

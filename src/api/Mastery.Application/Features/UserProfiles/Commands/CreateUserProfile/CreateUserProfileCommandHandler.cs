@@ -1,4 +1,5 @@
 using Mastery.Application.Common.Interfaces;
+using Mastery.Domain.Entities;
 using Mastery.Domain.Entities.UserProfile;
 using Mastery.Domain.Exceptions;
 using Mastery.Domain.Interfaces;
@@ -9,15 +10,18 @@ namespace Mastery.Application.Features.UserProfiles.Commands.CreateUserProfile;
 public sealed class CreateUserProfileCommandHandler : ICommandHandler<CreateUserProfileCommand, Guid>
 {
     private readonly IUserProfileRepository _userProfileRepository;
+    private readonly ISeasonRepository _seasonRepository;
     private readonly ICurrentUserService _currentUserService;
     private readonly IUnitOfWork _unitOfWork;
 
     public CreateUserProfileCommandHandler(
         IUserProfileRepository userProfileRepository,
+        ISeasonRepository seasonRepository,
         ICurrentUserService currentUserService,
         IUnitOfWork unitOfWork)
     {
         _userProfileRepository = userProfileRepository;
+        _seasonRepository = seasonRepository;
         _currentUserService = currentUserService;
         _unitOfWork = unitOfWork;
     }
@@ -77,6 +81,29 @@ public sealed class CreateUserProfileCommandHandler : ICommandHandler<CreateUser
         }
 
         await _userProfileRepository.AddAsync(profile, cancellationToken);
+
+        // Create initial season if provided
+        if (request.InitialSeason != null)
+        {
+            var seasonType = Enum.TryParse<SeasonType>(request.InitialSeason.Type, out var type)
+                ? type
+                : SeasonType.Build;
+
+            var season = Season.Create(
+                userId,
+                request.InitialSeason.Label,
+                seasonType,
+                request.InitialSeason.StartDate,
+                request.InitialSeason.ExpectedEndDate,
+                request.InitialSeason.FocusRoleIds,
+                request.InitialSeason.FocusGoalIds,
+                request.InitialSeason.SuccessStatement,
+                request.InitialSeason.NonNegotiables,
+                request.InitialSeason.Intensity);
+
+            await _seasonRepository.AddAsync(season, cancellationToken);
+        }
+
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return profile.Id;

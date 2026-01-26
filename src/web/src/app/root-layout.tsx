@@ -1,26 +1,65 @@
-import { Outlet } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { cn } from '@/lib/utils'
+import { useProfile } from '@/features/profile/hooks/use-profile'
+
+const navLinks = [
+  { href: '/', label: 'Dashboard' },
+  { href: '/goals', label: 'Goals' },
+  { href: '/habits', label: 'Habits' },
+  { href: '/check-in', label: 'Check-in' },
+  { href: '/profile', label: 'Profile' },
+]
 
 export function RootLayout() {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const { data: profile, isLoading, isFetched } = useProfile()
+
+  // Redirect to onboarding if no profile exists
+  useEffect(() => {
+    if (isFetched && profile === null) {
+      navigate('/onboarding', { replace: true })
+    }
+  }, [isFetched, profile, navigate])
+
+  // Show loading while checking profile
+  if (isLoading || (isFetched && profile === null)) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <div className="text-xl font-bold text-primary">Mastery</div>
+          <div className="animate-pulse text-muted-foreground">Loading...</div>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="border-b border-slate-800 bg-slate-900">
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="border-b border-border bg-card">
         <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4">
-          <a href="/" className="text-xl font-bold text-white">
+          <Link to="/" className="text-xl font-bold text-primary">
             Mastery
-          </a>
+          </Link>
           <div className="flex gap-6">
-            <a href="/" className="text-slate-300 hover:text-white">
-              Dashboard
-            </a>
-            <a href="/goals" className="text-slate-300 hover:text-white">
-              Goals
-            </a>
-            <a href="/habits" className="text-slate-300 hover:text-white">
-              Habits
-            </a>
-            <a href="/check-in" className="text-slate-300 hover:text-white">
-              Check-in
-            </a>
+            {navLinks.map((link) => {
+              const isActive = location.pathname === link.href
+              return (
+                <Link
+                  key={link.href}
+                  to={link.href}
+                  className={cn(
+                    'text-sm font-medium transition-colors hover:text-primary',
+                    isActive
+                      ? 'text-primary'
+                      : 'text-muted-foreground'
+                  )}
+                >
+                  {link.label}
+                </Link>
+              )
+            })}
           </div>
         </nav>
       </header>

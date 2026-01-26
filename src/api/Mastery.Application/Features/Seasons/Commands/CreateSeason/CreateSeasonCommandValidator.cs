@@ -26,7 +26,7 @@ public sealed class CreateSeasonCommandValidator : AbstractValidator<CreateSeaso
         });
 
         RuleFor(x => x.Intensity)
-            .InclusiveBetween(1, 5).WithMessage("Intensity must be between 1 and 5.");
+            .InclusiveBetween(1, 10).WithMessage("Intensity must be between 1 and 10.");
 
         When(x => x.SuccessStatement != null, () =>
         {

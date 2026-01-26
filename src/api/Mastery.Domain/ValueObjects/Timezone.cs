@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Mastery.Domain.Common;
 using Mastery.Domain.Exceptions;
 
@@ -7,7 +8,14 @@ public sealed class Timezone : ValueObject
 {
     public string IanaId { get; }
 
-    private Timezone(string ianaId)
+    // Required for EF Core and JSON deserialization
+    private Timezone()
+    {
+        IanaId = string.Empty;
+    }
+
+    [JsonConstructor]
+    public Timezone(string ianaId)
     {
         IanaId = ianaId;
     }

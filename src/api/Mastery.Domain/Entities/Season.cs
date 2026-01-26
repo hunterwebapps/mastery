@@ -66,7 +66,7 @@ public sealed class Season : AuditableEntity, IAggregateRoot
     public IReadOnlyList<string> NonNegotiables => _nonNegotiables.AsReadOnly();
 
     /// <summary>
-    /// Intensity level (1-5). Higher = more aggressive planning.
+    /// Intensity level (1-10). Higher = more aggressive planning.
     /// </summary>
     public int Intensity { get; private set; } = 3;
 
@@ -100,8 +100,8 @@ public sealed class Season : AuditableEntity, IAggregateRoot
         if (string.IsNullOrWhiteSpace(label))
             throw new DomainException("Season label cannot be empty.");
 
-        if (intensity < 1 || intensity > 5)
-            throw new DomainException("Intensity must be between 1 and 5.");
+        if (intensity < 1 || intensity > 10)
+            throw new DomainException("Intensity must be between 1 and 10.");
 
         if (expectedEndDate.HasValue && expectedEndDate.Value <= startDate)
             throw new DomainException("Expected end date must be after start date.");
@@ -165,8 +165,8 @@ public sealed class Season : AuditableEntity, IAggregateRoot
 
         if (intensity.HasValue)
         {
-            if (intensity.Value < 1 || intensity.Value > 5)
-                throw new DomainException("Intensity must be between 1 and 5.");
+            if (intensity.Value < 1 || intensity.Value > 10)
+                throw new DomainException("Intensity must be between 1 and 10.");
             Intensity = intensity.Value;
         }
     }

@@ -11,7 +11,8 @@ public sealed record CreateUserProfileRequest(
     List<UserValueDto> Values,
     List<UserRoleDto> Roles,
     PreferencesDto? Preferences = null,
-    ConstraintsDto? Constraints = null);
+    ConstraintsDto? Constraints = null,
+    CreateSeasonRequest? InitialSeason = null);
 
 /// <summary>
 /// Request to update user values.

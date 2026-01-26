@@ -1,7 +1,12 @@
 using Mastery.Api.Contracts.UserProfiles;
 using Mastery.Application.Features.Seasons.Commands.CreateSeason;
+using Mastery.Application.Features.Seasons.Commands.EndSeason;
 using Mastery.Application.Features.Seasons.Queries.GetUserSeasons;
 using Mastery.Application.Features.UserProfiles.Commands.CreateUserProfile;
+using Mastery.Application.Features.UserProfiles.Commands.UpdateConstraints;
+using Mastery.Application.Features.UserProfiles.Commands.UpdatePreferences;
+using Mastery.Application.Features.UserProfiles.Commands.UpdateRoles;
+using Mastery.Application.Features.UserProfiles.Commands.UpdateValues;
 using Mastery.Application.Features.UserProfiles.Models;
 using Mastery.Application.Features.UserProfiles.Queries.GetCurrentUserProfile;
 using MediatR;
@@ -45,13 +50,27 @@ public class UserProfilesController : ControllerBase
         [FromBody] CreateUserProfileRequest request,
         CancellationToken cancellationToken)
     {
+        var initialSeason = request.InitialSeason is not null
+            ? new InitialSeasonDto(
+                request.InitialSeason.Label,
+                request.InitialSeason.Type,
+                request.InitialSeason.StartDate,
+                request.InitialSeason.ExpectedEndDate,
+                request.InitialSeason.FocusRoleIds,
+                request.InitialSeason.FocusGoalIds,
+                request.InitialSeason.SuccessStatement,
+                request.InitialSeason.NonNegotiables,
+                request.InitialSeason.Intensity)
+            : null;
+
         var command = new CreateUserProfileCommand(
             request.Timezone,
             request.Locale,
             request.Values,
             request.Roles,
             request.Preferences,
-            request.Constraints);
+            request.Constraints,
+            initialSeason);
 
         var id = await _mediator.Send(command, cancellationToken);
         return CreatedAtAction(nameof(GetCurrentProfile), new { id }, id);
@@ -68,8 +87,8 @@ public class UserProfilesController : ControllerBase
         [FromBody] PreferencesDto preferences,
         CancellationToken cancellationToken)
     {
-        // TODO: Implement UpdatePreferencesCommand
-        await Task.CompletedTask;
+        var command = new UpdatePreferencesCommand(preferences);
+        await _mediator.Send(command, cancellationToken);
         return NoContent();
     }
 
@@ -84,8 +103,8 @@ public class UserProfilesController : ControllerBase
         [FromBody] ConstraintsDto constraints,
         CancellationToken cancellationToken)
     {
-        // TODO: Implement UpdateConstraintsCommand
-        await Task.CompletedTask;
+        var command = new UpdateConstraintsCommand(constraints);
+        await _mediator.Send(command, cancellationToken);
         return NoContent();
     }
 
@@ -100,8 +119,8 @@ public class UserProfilesController : ControllerBase
         [FromBody] UpdateValuesRequest request,
         CancellationToken cancellationToken)
     {
-        // TODO: Implement UpdateValuesCommand
-        await Task.CompletedTask;
+        var command = new UpdateValuesCommand(request.Values);
+        await _mediator.Send(command, cancellationToken);
         return NoContent();
     }
 
@@ -116,8 +135,8 @@ public class UserProfilesController : ControllerBase
         [FromBody] UpdateRolesRequest request,
         CancellationToken cancellationToken)
     {
-        // TODO: Implement UpdateRolesCommand
-        await Task.CompletedTask;
+        var command = new UpdateRolesCommand(request.Roles);
+        await _mediator.Send(command, cancellationToken);
         return NoContent();
     }
 
@@ -169,8 +188,8 @@ public class UserProfilesController : ControllerBase
         [FromBody] EndSeasonRequest request,
         CancellationToken cancellationToken)
     {
-        // TODO: Implement EndSeasonCommand
-        await Task.CompletedTask;
+        var command = new EndSeasonCommand(id, request.Outcome);
+        await _mediator.Send(command, cancellationToken);
         return NoContent();
     }
 }

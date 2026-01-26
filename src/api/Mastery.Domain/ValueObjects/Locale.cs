@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Mastery.Domain.Common;
 using Mastery.Domain.Exceptions;
@@ -8,7 +9,14 @@ public sealed partial class Locale : ValueObject
 {
     public string Code { get; }
 
-    private Locale(string code)
+    // Required for EF Core and JSON deserialization
+    private Locale()
+    {
+        Code = string.Empty;
+    }
+
+    [JsonConstructor]
+    public Locale(string code)
     {
         Code = code;
     }

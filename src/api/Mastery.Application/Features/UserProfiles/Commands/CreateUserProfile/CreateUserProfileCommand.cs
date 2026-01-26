@@ -12,4 +12,19 @@ public sealed record CreateUserProfileCommand(
     List<UserValueDto> Values,
     List<UserRoleDto> Roles,
     PreferencesDto? Preferences = null,
-    ConstraintsDto? Constraints = null) : ICommand<Guid>;
+    ConstraintsDto? Constraints = null,
+    InitialSeasonDto? InitialSeason = null) : ICommand<Guid>;
+
+/// <summary>
+/// Initial season data for onboarding.
+/// </summary>
+public sealed record InitialSeasonDto(
+    string Label,
+    string Type,
+    DateOnly StartDate,
+    DateOnly? ExpectedEndDate = null,
+    List<Guid>? FocusRoleIds = null,
+    List<Guid>? FocusGoalIds = null,
+    string? SuccessStatement = null,
+    List<string>? NonNegotiables = null,
+    int Intensity = 3);

@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Mastery.Domain.Common;
 using Mastery.Domain.Exceptions;
 
@@ -8,7 +9,15 @@ public sealed class CheckInSchedule : ValueObject
     public TimeOnly MorningTime { get; }
     public TimeOnly EveningTime { get; }
 
-    private CheckInSchedule(TimeOnly morningTime, TimeOnly eveningTime)
+    // Required for EF Core and JSON deserialization
+    private CheckInSchedule()
+    {
+        MorningTime = default;
+        EveningTime = default;
+    }
+
+    [JsonConstructor]
+    public CheckInSchedule(TimeOnly morningTime, TimeOnly eveningTime)
     {
         MorningTime = morningTime;
         EveningTime = eveningTime;
