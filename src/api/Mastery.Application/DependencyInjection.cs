@@ -25,10 +25,10 @@ public static class DependencyInjection
         services.AddValidatorsFromAssembly(Assembly.GetExecutingAssembly());
 
         // Recommendation pipeline services
-        services.AddScoped<IRecommendationPipeline, RecommendationPipeline>();
+        services.AddScoped<IRecommendationPipeline, DeterministicRecommendationPipeline>();
         services.AddScoped<IUserStateAssembler, UserStateAssembler>();
         services.AddScoped<IRecommendationRanker, DefaultRecommendationRanker>();
-        services.AddScoped<DeterministicLlmOrchestrator>();
+        services.AddScoped<DeterministicRecommendationOrchestrator>();
         services.AddScoped<IRecommendationExecutor, RecommendationExecutor>();
 
         // Signal detectors (registered as IEnumerable<IDiagnosticSignalDetector>)

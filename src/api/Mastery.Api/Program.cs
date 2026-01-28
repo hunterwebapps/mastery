@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Azure.Identity;
 using Mastery.Api.Middleware;
 using Mastery.Api.Services;
 using Mastery.Api.Workers;
@@ -9,6 +10,15 @@ using Scalar.AspNetCore;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Add Azure Key Vault configuration
+var keyVaultUri = builder.Configuration["KeyVault:VaultUri"];
+if (!string.IsNullOrEmpty(keyVaultUri))
+{
+    builder.Configuration.AddAzureKeyVault(
+        new Uri(keyVaultUri),
+        new DefaultAzureCredential());
+}
 
 // Configure Serilog
 builder.Host.UseSerilog((context, configuration) =>

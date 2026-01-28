@@ -50,7 +50,7 @@ public static class DependencyInjection
         services.Configure<OpenAiOptions>(opts =>
             configuration.GetSection(OpenAiOptions.SectionName).Bind(opts));
         services.AddScoped<LlmResponseParser>();
-        services.AddScoped<ILlmRecommendationOrchestrator, OpenAiLlmOrchestrator>();
+        services.AddScoped<IRecommendationOrchestrator, OpenAiLlmOrchestrator>();
 
         return services;
     }
