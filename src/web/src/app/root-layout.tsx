@@ -6,7 +6,11 @@ import { useProfile } from '@/features/profile/hooks/use-profile'
 const navLinks = [
   { href: '/', label: 'Dashboard' },
   { href: '/goals', label: 'Goals' },
+  { href: '/projects', label: 'Projects' },
+  { href: '/tasks', label: 'Tasks' },
   { href: '/habits', label: 'Habits' },
+  { href: '/experiments', label: 'Experiments' },
+  { href: '/recommendations', label: 'Recommendations' },
   { href: '/check-in', label: 'Check-in' },
   { href: '/profile', label: 'Profile' },
 ]

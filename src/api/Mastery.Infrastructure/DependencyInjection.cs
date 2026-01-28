@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
+
 namespace Mastery.Infrastructure;
 
 public static class DependencyInjection
@@ -31,8 +32,25 @@ public static class DependencyInjection
         // Register repositories
         services.AddScoped<IUserProfileRepository, UserProfileRepository>();
         services.AddScoped<ISeasonRepository, SeasonRepository>();
+        services.AddScoped<IGoalRepository, GoalRepository>();
+        services.AddScoped<IMetricDefinitionRepository, MetricDefinitionRepository>();
+        services.AddScoped<IMetricObservationRepository, MetricObservationRepository>();
+        services.AddScoped<IHabitRepository, HabitRepository>();
+        services.AddScoped<ITaskRepository, TaskRepository>();
+        services.AddScoped<IProjectRepository, ProjectRepository>();
+        services.AddScoped<ICheckInRepository, CheckInRepository>();
+        services.AddScoped<IExperimentRepository, ExperimentRepository>();
+        services.AddScoped<IRecommendationRepository, RecommendationRepository>();
+        services.AddScoped<IDiagnosticSignalRepository, DiagnosticSignalRepository>();
+        services.AddScoped<IRecommendationRunHistoryRepository, RecommendationRunHistoryRepository>();
 
         services.AddSingleton<IDateTimeProvider, DateTimeProvider>();
+
+        // OpenAI recommendation orchestrator
+        services.Configure<OpenAiOptions>(opts =>
+            configuration.GetSection(OpenAiOptions.SectionName).Bind(opts));
+        services.AddScoped<LlmResponseParser>();
+        services.AddScoped<ILlmRecommendationOrchestrator, OpenAiLlmOrchestrator>();
 
         return services;
     }

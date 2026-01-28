@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using Mastery.Api.Middleware;
 using Mastery.Api.Services;
+using Mastery.Api.Workers;
 using Mastery.Application;
 using Mastery.Application.Common.Interfaces;
 using Mastery.Infrastructure;
@@ -37,6 +38,11 @@ builder.Services.AddOpenApi(options =>
         return Task.CompletedTask;
     });
 });
+
+// Background worker for proactive recommendations
+builder.Services.Configure<BackgroundWorkerOptions>(
+    builder.Configuration.GetSection(BackgroundWorkerOptions.SectionName));
+builder.Services.AddHostedService<RecommendationBackgroundWorker>();
 
 // Add CORS for React SPA
 builder.Services.AddCors(options =>
