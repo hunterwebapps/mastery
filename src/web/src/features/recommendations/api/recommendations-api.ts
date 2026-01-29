@@ -2,6 +2,7 @@ import { apiClient } from '@/lib/api-client'
 import type {
   RecommendationDto,
   RecommendationSummaryDto,
+  ExecutionResult,
 } from '@/types'
 
 export const recommendationsApi = {
@@ -20,8 +21,9 @@ export const recommendationsApi = {
     return data
   },
 
-  acceptRecommendation: async (id: string): Promise<void> => {
-    await apiClient.post(`/recommendations/${id}/accept`)
+  acceptRecommendation: async (id: string): Promise<ExecutionResult> => {
+    const { data } = await apiClient.post<ExecutionResult>(`/recommendations/${id}/accept`)
+    return data
   },
 
   dismissRecommendation: async (id: string, reason?: string): Promise<void> => {

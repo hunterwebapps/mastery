@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from 'react'
 import {
   Lightbulb,
   Zap,
@@ -8,6 +9,7 @@ import {
   X,
   Clock,
   ArrowRight,
+  ChevronDown,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -16,6 +18,7 @@ import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
 import type { RecommendationSummaryDto, RecommendationType, RecommendationTargetKind } from '@/types'
 import { recommendationTypeInfo, recommendationStatusInfo } from '@/types'
+import { ActionPreview } from './action-preview'
 
 const typeIcons: Record<RecommendationType, React.ElementType> = {
   NextBestAction: Zap,
@@ -25,11 +28,24 @@ const typeIcons: Record<RecommendationType, React.ElementType> = {
   TaskBreakdownSuggestion: Lightbulb,
   ScheduleAdjustmentSuggestion: Clock,
   ProjectStuckFix: AlertTriangle,
+  ProjectSuggestion: Lightbulb,
   ExperimentRecommendation: Lightbulb,
   GoalScoreboardSuggestion: Target,
   HabitFromLeadMetricSuggestion: Activity,
   CheckInConsistencyNudge: Lightbulb,
   MetricObservationReminder: Activity,
+  // Edit/Archive types
+  TaskEditSuggestion: CheckCircle,
+  TaskArchiveSuggestion: CheckCircle,
+  HabitEditSuggestion: Activity,
+  HabitArchiveSuggestion: Activity,
+  GoalEditSuggestion: Target,
+  GoalArchiveSuggestion: Target,
+  ProjectEditSuggestion: Lightbulb,
+  ProjectArchiveSuggestion: Lightbulb,
+  MetricEditSuggestion: Activity,
+  ExperimentEditSuggestion: Lightbulb,
+  ExperimentArchiveSuggestion: Lightbulb,
 }
 
 const targetKindIcons: Record<RecommendationTargetKind, React.ElementType> = {
@@ -52,11 +68,25 @@ function getTypeBorderColor(type: RecommendationType): string {
     TaskBreakdownSuggestion: 'border-l-blue-500',
     ScheduleAdjustmentSuggestion: 'border-l-sky-500',
     ProjectStuckFix: 'border-l-red-500',
+    ProjectSuggestion: 'border-l-pink-500',
     ExperimentRecommendation: 'border-l-violet-500',
     GoalScoreboardSuggestion: 'border-l-teal-500',
     HabitFromLeadMetricSuggestion: 'border-l-emerald-500',
     CheckInConsistencyNudge: 'border-l-cyan-500',
     MetricObservationReminder: 'border-l-indigo-500',
+    // Edit types - use blue-ish colors
+    TaskEditSuggestion: 'border-l-blue-500',
+    HabitEditSuggestion: 'border-l-sky-500',
+    GoalEditSuggestion: 'border-l-teal-500',
+    ProjectEditSuggestion: 'border-l-cyan-500',
+    MetricEditSuggestion: 'border-l-indigo-500',
+    ExperimentEditSuggestion: 'border-l-violet-500',
+    // Archive types - use gray/red-ish colors
+    TaskArchiveSuggestion: 'border-l-slate-500',
+    HabitArchiveSuggestion: 'border-l-slate-500',
+    GoalArchiveSuggestion: 'border-l-slate-500',
+    ProjectArchiveSuggestion: 'border-l-slate-500',
+    ExperimentArchiveSuggestion: 'border-l-slate-500',
   }
   return map[type] ?? 'border-l-gray-500'
 }
@@ -75,7 +105,7 @@ function getExpiryCountdown(expiresAt: string): string | null {
 
 interface RecommendationCardProps {
   recommendation: RecommendationSummaryDto
-  onAccept: (id: string) => void
+  onAccept: (recommendation: RecommendationSummaryDto) => void
   onDismiss: (id: string) => void
   onSnooze: (id: string) => void
 }
@@ -86,6 +116,10 @@ export function RecommendationCard({
   onDismiss,
   onSnooze,
 }: RecommendationCardProps) {
+  const [isExpanded, setIsExpanded] = useState(false)
+  const [showExpandButton, setShowExpandButton] = useState(false)
+  const rationaleRef = useRef<HTMLParagraphElement>(null)
+
   const typeInfo = recommendationTypeInfo[recommendation.type]
   const statusInfo = recommendationStatusInfo[recommendation.status]
   const TypeIcon = typeIcons[recommendation.type]
@@ -96,6 +130,27 @@ export function RecommendationCard({
   const expiryText = recommendation.expiresAt
     ? getExpiryCountdown(recommendation.expiresAt)
     : null
+
+  // Check if text is truncated (scrollHeight > clientHeight means overflow)
+  // Only check when collapsed, and preserve button visibility when expanded
+  useEffect(() => {
+    if (isExpanded) return // Don't recalculate when expanded
+
+    const checkTruncation = () => {
+      const el = rationaleRef.current
+      if (el) {
+        // scrollHeight is the full content height, clientHeight is visible height
+        // When line-clamp is applied, scrollHeight > clientHeight if text is truncated
+        const isTruncated = el.scrollHeight > el.clientHeight
+        setShowExpandButton(isTruncated)
+      }
+    }
+
+    // Check immediately and after a frame to ensure layout is complete
+    checkTruncation()
+    const frameId = requestAnimationFrame(checkTruncation)
+    return () => cancelAnimationFrame(frameId)
+  }, [recommendation.rationale, isExpanded])
 
   return (
     <Card
@@ -147,10 +202,36 @@ export function RecommendationCard({
             {recommendation.title}
           </h4>
 
-          {/* Rationale */}
-          <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2">
-            {recommendation.rationale}
-          </p>
+          {/* Rationale with expandable content */}
+          <div className="space-y-1.5">
+            <p
+              ref={rationaleRef}
+              className={cn(
+                'text-sm text-muted-foreground leading-relaxed',
+                !isExpanded && 'line-clamp-2'
+              )}
+            >
+              {recommendation.rationale}
+            </p>
+            {showExpandButton && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setIsExpanded(!isExpanded)
+                }}
+                className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
+              >
+                <span>{isExpanded ? 'View less' : 'View more'}</span>
+                <ChevronDown
+                  className={cn(
+                    'size-3 transition-transform duration-300',
+                    isExpanded && 'rotate-180'
+                  )}
+                />
+              </button>
+            )}
+          </div>
 
           {/* Target entity */}
           {recommendation.targetEntityTitle && (
@@ -163,6 +244,14 @@ export function RecommendationCard({
               <ArrowRight className="size-3 shrink-0 text-primary/60" />
             </div>
           )}
+
+          {/* Action Preview */}
+          <ActionPreview
+            actionKind={recommendation.actionKind}
+            targetKind={recommendation.targetKind}
+            targetTitle={recommendation.targetEntityTitle}
+            actionSummary={recommendation.actionSummary}
+          />
 
           {/* Score indicator */}
           <div className="pt-1">
@@ -181,7 +270,7 @@ export function RecommendationCard({
                 className="text-green-500 hover:text-green-400 hover:bg-green-500/10"
                 onClick={(e) => {
                   e.stopPropagation()
-                  onAccept(recommendation.id)
+                  onAccept(recommendation)
                 }}
               >
                 <CheckCircle className="size-3.5 mr-1.5" />

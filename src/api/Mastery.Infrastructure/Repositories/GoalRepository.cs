@@ -79,4 +79,11 @@ public class GoalRepository : BaseRepository<Goal>, IGoalRepository
         return await DbSet
             .AnyAsync(g => g.Id == id && g.UserId == userId, cancellationToken);
     }
+
+    public async Task AddGoalMetricAsync(
+        GoalMetric metric,
+        CancellationToken cancellationToken = default)
+    {
+        await Context.Set<GoalMetric>().AddAsync(metric, cancellationToken);
+    }
 }

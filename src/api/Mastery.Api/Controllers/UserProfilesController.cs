@@ -10,6 +10,7 @@ using Mastery.Application.Features.UserProfiles.Commands.UpdateValues;
 using Mastery.Application.Features.UserProfiles.Models;
 using Mastery.Application.Features.UserProfiles.Queries.GetCurrentUserProfile;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Mastery.Api.Controllers;
@@ -19,6 +20,7 @@ namespace Mastery.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/user-profile")]
+[Authorize]
 public class UserProfilesController : ControllerBase
 {
     private readonly ISender _mediator;

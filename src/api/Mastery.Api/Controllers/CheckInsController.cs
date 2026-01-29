@@ -8,6 +8,7 @@ using Mastery.Application.Features.CheckIns.Queries.GetCheckInById;
 using Mastery.Application.Features.CheckIns.Queries.GetCheckIns;
 using Mastery.Application.Features.CheckIns.Queries.GetTodayCheckInState;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Mastery.Api.Controllers;
@@ -17,6 +18,7 @@ namespace Mastery.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/check-ins")]
+[Authorize]
 public class CheckInsController : ControllerBase
 {
     private readonly ISender _mediator;

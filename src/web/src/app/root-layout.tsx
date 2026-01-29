@@ -1,22 +1,9 @@
 import { useEffect } from 'react'
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { cn } from '@/lib/utils'
+import { Outlet, useNavigate } from 'react-router-dom'
 import { useProfile } from '@/features/profile/hooks/use-profile'
-
-const navLinks = [
-  { href: '/', label: 'Dashboard' },
-  { href: '/goals', label: 'Goals' },
-  { href: '/projects', label: 'Projects' },
-  { href: '/tasks', label: 'Tasks' },
-  { href: '/habits', label: 'Habits' },
-  { href: '/experiments', label: 'Experiments' },
-  { href: '/recommendations', label: 'Recommendations' },
-  { href: '/check-in', label: 'Check-in' },
-  { href: '/profile', label: 'Profile' },
-]
+import { MainNav } from '@/components/navigation'
 
 export function RootLayout() {
-  const location = useLocation()
   const navigate = useNavigate()
   const { data: profile, isLoading, isFetched } = useProfile()
 
@@ -42,30 +29,7 @@ export function RootLayout() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border bg-card">
-        <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4">
-          <Link to="/" className="text-xl font-bold text-primary">
-            Mastery
-          </Link>
-          <div className="flex gap-6">
-            {navLinks.map((link) => {
-              const isActive = location.pathname === link.href
-              return (
-                <Link
-                  key={link.href}
-                  to={link.href}
-                  className={cn(
-                    'text-sm font-medium transition-colors hover:text-primary',
-                    isActive
-                      ? 'text-primary'
-                      : 'text-muted-foreground'
-                  )}
-                >
-                  {link.label}
-                </Link>
-              )
-            })}
-          </div>
-        </nav>
+        <MainNav />
       </header>
       <main className="mx-auto max-w-7xl px-4 py-8">
         <Outlet />

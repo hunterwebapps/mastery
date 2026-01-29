@@ -14,7 +14,7 @@ import {
   RecommendationDetailSheet,
   GenerateButton,
 } from '../components'
-import type { RecommendationContext } from '@/types'
+import type { RecommendationContext, RecommendationSummaryDto } from '@/types'
 
 type ContextFilter = RecommendationContext | 'all'
 
@@ -61,8 +61,8 @@ export function Component() {
   const snoozeMutation = useSnoozeRecommendation()
 
   // Handlers
-  const handleAccept = (id: string) => {
-    acceptMutation.mutate(id)
+  const handleAccept = (recommendation: RecommendationSummaryDto) => {
+    acceptMutation.mutate(recommendation)
   }
 
   const handleDismiss = (id: string) => {

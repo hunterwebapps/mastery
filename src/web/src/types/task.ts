@@ -340,7 +340,7 @@ export const priorityInfo: Record<number, {
   5: { label: 'Lowest', color: 'text-gray-400', bgColor: 'bg-gray-500/15' },
 }
 
-export const contributionTypeInfo: Record<TaskContributionType, {
+export const taskContributionTypeInfo: Record<TaskContributionType, {
   label: string
   description: string
 }> = {

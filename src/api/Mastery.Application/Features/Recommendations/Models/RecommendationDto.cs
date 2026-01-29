@@ -17,6 +17,7 @@ public sealed record RecommendationDto
     public required string Title { get; init; }
     public required string Rationale { get; init; }
     public string? ActionPayload { get; init; }
+    public string? ActionSummary { get; init; }
     public decimal Score { get; init; }
     public DateTime? ExpiresAt { get; init; }
     public DateTime? RespondedAt { get; init; }
@@ -42,6 +43,7 @@ public sealed record RecommendationSummaryDto
     public required string ActionKind { get; init; }
     public required string Title { get; init; }
     public required string Rationale { get; init; }
+    public string? ActionSummary { get; init; }
     public decimal Score { get; init; }
     public DateTime? ExpiresAt { get; init; }
     public DateTime CreatedAt { get; init; }

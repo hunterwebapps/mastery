@@ -111,6 +111,10 @@ public class GoalConfiguration : IEntityTypeConfiguration<Goal>
             .HasForeignKey(x => x.GoalId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // Configure EF Core to access the backing field directly for change tracking.
+        // This is needed because Metrics returns AsReadOnly() wrapper.
+        builder.Navigation(x => x.Metrics).UsePropertyAccessMode(PropertyAccessMode.Field);
+
         // Audit fields
         builder.Property(x => x.CreatedAt).IsRequired();
         builder.Property(x => x.CreatedBy).HasMaxLength(256);

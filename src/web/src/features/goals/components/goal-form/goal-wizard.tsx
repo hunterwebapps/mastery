@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { ArrowLeft, ArrowRight, Check, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
+import { AiSuggestionBanner } from '@/components/ai-suggestion-banner'
 import { useCreateGoal } from '../../hooks'
 import { createGoalSchema, type CreateGoalFormData } from '../../schemas'
 import { StepBasics } from './step-basics'
@@ -17,21 +18,32 @@ const STEPS = [
   { id: 'review', title: 'Review', description: 'Confirm and create' },
 ]
 
-export function GoalWizard() {
+export interface GoalWizardProps {
+  /** Initial data for form pre-population */
+  initialData?: Partial<CreateGoalFormData>
+  /** Show the AI suggestion banner */
+  showAiBanner?: boolean
+  /** Called after successful creation */
+  onSuccess?: () => void
+}
+
+export function GoalWizard({ initialData, showAiBanner, onSuccess }: GoalWizardProps = {}) {
   const navigate = useNavigate()
   const [currentStep, setCurrentStep] = useState(0)
   const createGoal = useCreateGoal()
 
+  const defaultValues: CreateGoalFormData = {
+    title: '',
+    description: '',
+    why: '',
+    priority: 3,
+    deadline: '',
+    metrics: [],
+  }
+
   const methods = useForm<CreateGoalFormData>({
     resolver: zodResolver(createGoalSchema),
-    defaultValues: {
-      title: '',
-      description: '',
-      why: '',
-      priority: 3,
-      deadline: '',
-      metrics: [],
-    },
+    defaultValues: initialData ? { ...defaultValues, ...initialData } : defaultValues,
     mode: 'onChange',
   })
 
@@ -76,6 +88,7 @@ export function GoalWizard() {
           displayOrder: index,
         })),
       })
+      onSuccess?.()
       navigate(`/goals/${goalId}`)
     } catch (error) {
       console.error('Failed to create goal:', error)
@@ -148,6 +161,9 @@ export function GoalWizard() {
             ))}
           </div>
         </div>
+
+        {/* AI Suggestion Banner */}
+        {showAiBanner && currentStep === 0 && <AiSuggestionBanner />}
 
         {/* Step Content */}
         <div className="min-h-[400px]">

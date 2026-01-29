@@ -14,6 +14,7 @@ const defaultLabels = [
   'Preferences',
   'Constraints',
   'Season',
+  'Account',
 ]
 
 export function StepIndicator({
@@ -24,18 +25,31 @@ export function StepIndicator({
   return (
     <div className="w-full">
       {/* Desktop view */}
-      <div className="hidden sm:flex items-center justify-between">
-        {Array.from({ length: totalSteps }).map((_, index) => {
-          const step = index + 1
-          const isCompleted = step < currentStep
-          const isCurrent = step === currentStep
+      <div className="hidden sm:block relative">
+        {/* Connector lines - positioned behind the circles */}
+        <div className="absolute top-5 left-0 right-0 flex" style={{ paddingLeft: '20px', paddingRight: '20px' }}>
+          {Array.from({ length: totalSteps - 1 }).map((_, index) => (
+            <div
+              key={index}
+              className={cn(
+                'flex-1 h-0.5',
+                index + 1 < currentStep ? 'bg-primary' : 'bg-muted'
+              )}
+            />
+          ))}
+        </div>
+        {/* Step circles and labels */}
+        <div className="relative flex justify-between">
+          {Array.from({ length: totalSteps }).map((_, index) => {
+            const step = index + 1
+            const isCompleted = step < currentStep
+            const isCurrent = step === currentStep
 
-          return (
-            <div key={step} className="flex items-center flex-1">
-              <div className="flex flex-col items-center">
+            return (
+              <div key={step} className="flex flex-col items-center">
                 <div
                   className={cn(
-                    'size-10 rounded-full flex items-center justify-center text-sm font-medium transition-colors',
+                    'size-10 rounded-full flex items-center justify-center text-sm font-medium transition-colors bg-background',
                     isCompleted && 'bg-primary text-primary-foreground',
                     isCurrent && 'bg-primary text-primary-foreground ring-4 ring-primary/20',
                     !isCompleted && !isCurrent && 'bg-muted text-muted-foreground'
@@ -53,17 +67,9 @@ export function StepIndicator({
                   {labels[index]}
                 </span>
               </div>
-              {step < totalSteps && (
-                <div
-                  className={cn(
-                    'flex-1 h-0.5 mx-3',
-                    step < currentStep ? 'bg-primary' : 'bg-muted'
-                  )}
-                />
-              )}
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
       </div>
 
       {/* Mobile view */}

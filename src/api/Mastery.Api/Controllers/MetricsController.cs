@@ -6,6 +6,7 @@ using Mastery.Application.Features.Metrics.Models;
 using Mastery.Application.Features.Metrics.Queries.GetMetricDefinitions;
 using Mastery.Application.Features.Metrics.Queries.GetObservations;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Mastery.Api.Controllers;
@@ -15,6 +16,7 @@ namespace Mastery.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/metrics")]
+[Authorize]
 public class MetricsController : ControllerBase
 {
     private readonly ISender _mediator;

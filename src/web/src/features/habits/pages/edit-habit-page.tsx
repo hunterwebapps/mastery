@@ -1,10 +1,12 @@
-import { useMemo } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useMemo, useCallback } from 'react'
+import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useHabit } from '../hooks/use-habits'
 import { HabitWizard } from '../components/habit-form'
 import { habitToFormData } from '../utils'
+import { getPayload, clearPayload } from '@/features/recommendations/lib/payload-storage'
+import { transformPayloadForForm } from '@/features/recommendations/lib/payload-transformers'
 
 function EditHabitSkeleton() {
   return (
@@ -61,13 +63,44 @@ function EditHabitSkeleton() {
 
 export function Component() {
   const { id } = useParams<{ id: string }>()
+  const [searchParams] = useSearchParams()
+  const recommendationId = searchParams.get('id')
+  const isFromRecommendation = searchParams.get('from') === 'recommendation'
+
   const { data: habit, isLoading, error } = useHabit(id ?? '')
 
-  // Convert habit data to form data when loaded
-  const initialData = useMemo(() => {
-    if (!habit) return undefined
-    return habitToFormData(habit)
-  }, [habit])
+  // Convert habit data to form data and merge with recommendation payload
+  const { initialData, showAiBanner } = useMemo(() => {
+    if (!habit) {
+      return { initialData: undefined, showAiBanner: false }
+    }
+
+    const baseData = habitToFormData(habit)
+
+    // Overlay fields from recommendation payload (if any)
+    if (isFromRecommendation && recommendationId) {
+      const stored = getPayload(recommendationId)
+      if (stored?.targetKind === 'Habit') {
+        // Transform LLM payload field names to form field names
+        const transformed = transformPayloadForForm(stored.payload, 'Habit')
+        // Only overlay fields that exist in transformed payload
+        for (const [key, value] of Object.entries(transformed)) {
+          if (value !== undefined && value !== null) {
+            (baseData as unknown as Record<string, unknown>)[key] = value
+          }
+        }
+        return { initialData: baseData, showAiBanner: true }
+      }
+    }
+
+    return { initialData: baseData, showAiBanner: false }
+  }, [habit, isFromRecommendation, recommendationId])
+
+  const handleSuccess = useCallback(() => {
+    if (recommendationId) {
+      clearPayload(recommendationId)
+    }
+  }, [recommendationId])
 
   if (isLoading) {
     return <EditHabitSkeleton />
@@ -99,6 +132,8 @@ export function Component() {
           initialData={initialData}
           habitId={habit.id}
           cancelPath={`/habits/${habit.id}`}
+          showAiBanner={showAiBanner}
+          onSuccess={handleSuccess}
         />
       </div>
     </div>

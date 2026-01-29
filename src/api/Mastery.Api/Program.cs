@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json.Serialization;
 using Azure.Identity;
 using Mastery.Api.Middleware;
@@ -6,6 +7,11 @@ using Mastery.Api.Workers;
 using Mastery.Application;
 using Mastery.Application.Common.Interfaces;
 using Mastery.Infrastructure;
+using Mastery.Infrastructure.Data;
+using Mastery.Infrastructure.Identity;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
 using Serilog;
 
@@ -54,6 +60,11 @@ builder.Services.Configure<BackgroundWorkerOptions>(
     builder.Configuration.GetSection(BackgroundWorkerOptions.SectionName));
 builder.Services.AddHostedService<RecommendationBackgroundWorker>();
 
+// Background worker for outbox processing (embedding generation)
+builder.Services.Configure<OutboxWorkerOptions>(
+    builder.Configuration.GetSection(OutboxWorkerOptions.SectionName));
+builder.Services.AddHostedService<OutboxProcessingWorker>();
+
 // Add CORS for React SPA
 builder.Services.AddCors(options =>
 {
@@ -66,7 +77,65 @@ builder.Services.AddCors(options =>
     });
 });
 
+// JWT Authentication + OAuth providers
+var jwtSettings = builder.Configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>()
+    ?? throw new InvalidOperationException("JWT settings are not configured properly.");
+
+var authBuilder = builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultSignInScheme = IdentityConstants.ExternalScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey = new SymmetricSecurityKey(
+            Encoding.UTF8.GetBytes(jwtSettings?.Secret ?? "development-secret-key-at-least-32-chars")),
+        ValidateIssuer = true,
+        ValidIssuer = jwtSettings!.Issuer,
+        ValidateAudience = true,
+        ValidAudience = jwtSettings.Audience,
+        ValidateLifetime = true,
+        ClockSkew = TimeSpan.Zero,
+    };
+});
+
+// Add OAuth providers if configured
+var googleClientId = builder.Configuration["Google:ClientId"]
+    ?? throw new InvalidOperationException("Google OAuth ClientId is not configured.");
+authBuilder.AddGoogle(options =>
+{
+    options.ClientId = googleClientId;
+    options.ClientSecret = builder.Configuration["Google:ClientSecret"]!;
+});
+
+var microsoftClientId = builder.Configuration["Microsoft:ClientId"]
+    ?? throw new InvalidOperationException("Microsoft OAuth ClientId is not configured.");
+authBuilder.AddMicrosoftAccount(options =>
+{
+    options.ClientId = microsoftClientId;
+    options.ClientSecret = builder.Configuration["Microsoft:ClientSecret"]!;
+});
+
+// Authorization policies
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy("RequireSuper", policy => policy.RequireRole(AppRoles.Super))
+    .AddPolicy("RequireAdmin", policy => policy.RequireRole(AppRoles.Super, AppRoles.Admin));
+
+// Database seeder
+builder.Services.AddScoped<MasteryDbSeeder>();
+
 var app = builder.Build();
+
+// Seed roles and super user
+using (var scope = app.Services.CreateScope())
+{
+    var seeder = scope.ServiceProvider.GetRequiredService<MasteryDbSeeder>();
+    await seeder.SeedAsync();
+}
 
 // Configure the HTTP request pipeline
 app.UseMiddleware<ExceptionHandlingMiddleware>();
@@ -84,6 +153,7 @@ if (app.Environment.IsDevelopment())
 app.UseSerilogRequestLogging();
 app.UseHttpsRedirection();
 app.UseCors("AllowSpa");
+app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 

@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
 import { Card } from '@/components/ui/card'
+import { AiSuggestionBanner } from '@/components/ai-suggestion-banner'
 import { cn } from '@/lib/utils'
 import { createProjectSchema, type CreateProjectFormData } from '../../schemas/project-schema'
 import { useCreateProject } from '../../hooks/use-projects'
@@ -17,10 +18,14 @@ import { priorityInfo } from '@/types/task'
 
 interface ProjectFormProps {
   mode: 'create' | 'edit'
-  initialData?: ProjectDto
+  initialData?: ProjectDto | Partial<CreateProjectFormData>
+  /** Show the AI suggestion banner when form is pre-filled from recommendation */
+  showAiBanner?: boolean
+  /** Called after successful save (for clearing recommendation payload) */
+  onSuccess?: () => void
 }
 
-export function ProjectForm({ mode, initialData }: ProjectFormProps) {
+export function ProjectForm({ mode, initialData, showAiBanner, onSuccess }: ProjectFormProps) {
   const navigate = useNavigate()
   const createProject = useCreateProject()
   const [isSavingAsDraft, setIsSavingAsDraft] = useState(false)
@@ -63,6 +68,7 @@ export function ProjectForm({ mode, initialData }: ProjectFormProps) {
     try {
       if (mode === 'create') {
         await createProject.mutateAsync({ ...data, saveAsDraft })
+        onSuccess?.()
         navigate('/projects')
       }
       // TODO: Add update mutation for edit mode
@@ -96,6 +102,9 @@ export function ProjectForm({ mode, initialData }: ProjectFormProps) {
           {mode === 'create' ? 'New Project' : 'Edit Project'}
         </h1>
       </div>
+
+      {/* AI Suggestion Banner */}
+      {showAiBanner && <AiSuggestionBanner />}
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
         {/* Title */}

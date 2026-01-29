@@ -11,13 +11,8 @@ namespace Mastery.Domain.Entities.Experiment;
 /// An experiment tests a specific hypothesis by making a deliberate change
 /// and observing the impact on a target metric over a defined time window.
 /// </summary>
-public sealed class Experiment : AuditableEntity, IAggregateRoot
+public sealed class Experiment : OwnedEntity, IAggregateRoot
 {
-    /// <summary>
-    /// The user who owns this experiment.
-    /// </summary>
-    public string UserId { get; private set; } = null!;
-
     /// <summary>
     /// The title of the experiment.
     /// </summary>
@@ -66,6 +61,7 @@ public sealed class Experiment : AuditableEntity, IAggregateRoot
     /// <summary>
     /// Actual end date (set on completion or abandonment).
     /// </summary>
+    [EmbeddingIgnore]
     public DateOnly? EndDateActual { get; private set; }
 
     /// <summary>
@@ -83,6 +79,7 @@ public sealed class Experiment : AuditableEntity, IAggregateRoot
     /// <summary>
     /// The measured result of the experiment (set on completion).
     /// </summary>
+    [EmbeddingIgnore]
     public ExperimentResult? Result { get; private set; }
 
     private Experiment() { } // EF Core

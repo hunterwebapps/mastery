@@ -9,6 +9,7 @@ namespace Mastery.Application.Common.Models;
 /// </summary>
 public sealed record UserStateSnapshot(
     string UserId,
+    UserProfileSnapshot? Profile,
     IReadOnlyList<GoalSnapshot> Goals,
     IReadOnlyList<HabitSnapshot> Habits,
     IReadOnlyList<TaskSnapshot> Tasks,
@@ -34,7 +35,15 @@ public sealed record GoalMetricSnapshot(
     MetricKind Kind,
     decimal TargetValue,
     decimal? CurrentValue,
-    MetricSourceType SourceHint);
+    MetricSourceType SourceHint,
+    // Extended fields for richer LLM context
+    string TargetType,
+    decimal? TargetMaxValue,
+    string WindowType,
+    int? RollingDays,
+    string Aggregation,
+    decimal Weight,
+    decimal? Baseline);
 
 public sealed record HabitSnapshot(
     Guid Id,
@@ -43,7 +52,22 @@ public sealed record HabitSnapshot(
     HabitMode CurrentMode,
     decimal Adherence7Day,
     int CurrentStreak,
-    IReadOnlyList<Guid> MetricBindingIds);
+    IReadOnlyList<Guid> MetricBindingIds,
+    HabitScheduleSnapshot? Schedule,
+    IReadOnlyList<HabitVariantSnapshot>? Variants,
+    IReadOnlyList<Guid>? GoalIds);
+
+public sealed record HabitScheduleSnapshot(
+    string Type,
+    int[]? DaysOfWeek,
+    int? FrequencyPerWeek,
+    int? IntervalDays);
+
+public sealed record HabitVariantSnapshot(
+    string Mode,
+    string Label,
+    int EstimatedMinutes,
+    int EnergyCost);
 
 public sealed record TaskSnapshot(
     Guid Id,
@@ -68,14 +92,39 @@ public sealed record ProjectSnapshot(
     Guid? NextTaskId,
     int TotalTasks,
     int CompletedTasks,
-    DateOnly? TargetEndDate);
+    DateOnly? TargetEndDate,
+    int Priority,
+    IReadOnlyList<MilestoneSnapshot>? Milestones);
+
+public sealed record MilestoneSnapshot(
+    Guid Id,
+    string Title,
+    string Status,
+    DateOnly? TargetDate);
 
 public sealed record ExperimentSnapshot(
     Guid Id,
     string Title,
     ExperimentStatus Status,
     DateOnly? StartDate,
-    DateOnly? EndDate);
+    DateOnly? EndDate,
+    // Extended fields for richer LLM context
+    string Category,
+    IReadOnlyList<Guid> LinkedGoalIds,
+    ExperimentHypothesisSnapshot? Hypothesis,
+    ExperimentMeasurementPlanSnapshot? MeasurementPlan);
+
+public sealed record ExperimentHypothesisSnapshot(
+    string Change,
+    string ExpectedOutcome,
+    string? Rationale);
+
+public sealed record ExperimentMeasurementPlanSnapshot(
+    Guid PrimaryMetricDefinitionId,
+    string PrimaryAggregation,
+    int BaselineWindowDays,
+    int RunWindowDays,
+    IReadOnlyList<Guid> GuardrailMetricDefinitionIds);
 
 public sealed record CheckInSnapshot(
     Guid Id,
@@ -90,5 +139,66 @@ public sealed record CheckInSnapshot(
 public sealed record MetricDefinitionSnapshot(
     Guid Id,
     string Name,
+    string? Description,
+    string DataType,
+    string Direction,
     MetricSourceType SourceType,
-    DateTime? LastObservationDate);
+    DateTime? LastObservationDate,
+    // Extended fields for richer LLM context
+    string? UnitType,
+    string? UnitDisplayLabel,
+    string DefaultCadence,
+    string DefaultAggregation,
+    IReadOnlyList<string> Tags);
+
+// ─────────────────────────────────────────────────────────────────
+// User Profile Snapshots
+// ─────────────────────────────────────────────────────────────────
+
+public sealed record UserProfileSnapshot(
+    string Timezone,
+    string Locale,
+    IReadOnlyList<UserValueSnapshot> Values,
+    IReadOnlyList<UserRoleSnapshot> Roles,
+    SeasonSnapshot? CurrentSeason,
+    PreferencesSnapshot Preferences,
+    ConstraintsSnapshot Constraints);
+
+public sealed record UserValueSnapshot(
+    string Label,
+    string? Key,
+    int Rank);
+
+public sealed record UserRoleSnapshot(
+    Guid Id,
+    string Label,
+    string? Key,
+    int Rank,
+    int SeasonPriority,
+    int MinWeeklyMinutes,
+    int TargetWeeklyMinutes,
+    IReadOnlyList<string> Tags,
+    bool IsActive);
+
+public sealed record SeasonSnapshot(
+    Guid Id,
+    string Label,
+    string Type,
+    int Intensity,
+    string? SuccessStatement,
+    IReadOnlyList<string> NonNegotiables,
+    IReadOnlyList<Guid> FocusRoleIds,
+    IReadOnlyList<Guid> FocusGoalIds,
+    DateOnly StartDate,
+    DateOnly? ExpectedEndDate);
+
+public sealed record PreferencesSnapshot(
+    string CoachingStyle,
+    string Verbosity,
+    string NudgeLevel);
+
+public sealed record ConstraintsSnapshot(
+    int MaxPlannedMinutesWeekday,
+    int MaxPlannedMinutesWeekend,
+    string? HealthNotes,
+    IReadOnlyList<string> ContentBoundaries);

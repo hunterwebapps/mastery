@@ -12,6 +12,8 @@ import {
   ChevronDown,
   ChevronUp,
   Loader2,
+  Pencil,
+  Trash2,
 } from 'lucide-react'
 import {
   Sheet,
@@ -46,11 +48,25 @@ const typeIcons: Record<RecommendationType, React.ElementType> = {
   TaskBreakdownSuggestion: Lightbulb,
   ScheduleAdjustmentSuggestion: Clock,
   ProjectStuckFix: AlertTriangle,
+  ProjectSuggestion: Lightbulb,
   ExperimentRecommendation: Lightbulb,
   GoalScoreboardSuggestion: Target,
   HabitFromLeadMetricSuggestion: Activity,
   CheckInConsistencyNudge: Lightbulb,
   MetricObservationReminder: Activity,
+  // Edit suggestions
+  TaskEditSuggestion: Pencil,
+  HabitEditSuggestion: Pencil,
+  GoalEditSuggestion: Pencil,
+  ProjectEditSuggestion: Pencil,
+  MetricEditSuggestion: Pencil,
+  ExperimentEditSuggestion: Pencil,
+  // Archive suggestions
+  TaskArchiveSuggestion: Trash2,
+  HabitArchiveSuggestion: Trash2,
+  GoalArchiveSuggestion: Trash2,
+  ProjectArchiveSuggestion: Trash2,
+  ExperimentArchiveSuggestion: Trash2,
 }
 
 function DetailSkeleton() {
@@ -98,7 +114,7 @@ export function RecommendationDetailSheet({
 
   const handleAccept = () => {
     if (!recommendation) return
-    acceptMutation.mutate(recommendation.id)
+    acceptMutation.mutate(recommendation)
   }
 
   const handleDismiss = () => {

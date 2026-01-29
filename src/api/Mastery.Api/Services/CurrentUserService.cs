@@ -3,32 +3,25 @@ using Mastery.Application.Common.Interfaces;
 
 namespace Mastery.Api.Services;
 
-public class CurrentUserService : ICurrentUserService
+public class CurrentUserService(IHttpContextAccessor _httpContextAccessor) : ICurrentUserService
 {
-    private readonly IHttpContextAccessor _httpContextAccessor;
-    private readonly IHostEnvironment _environment;
-
-    // TODO: Remove this shim when real authentication is implemented
-    private const string DevUserId = "dev-user-001";
-    private const string DevUserName = "Developer";
     private const string SystemUserId = "system";
     private const string SystemUserName = "Background Worker";
-
-    public CurrentUserService(IHttpContextAccessor httpContextAccessor, IHostEnvironment environment)
-    {
-        _httpContextAccessor = httpContextAccessor;
-        _environment = environment;
-    }
 
     public string? UserId
     {
         get
         {
+            // Try to get from JWT claims first
             var claimValue = _httpContextAccessor.HttpContext?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (claimValue is not null) return claimValue;
+            if (!string.IsNullOrEmpty(claimValue))
+                return claimValue;
 
-            // No HTTP context: background worker in production, or dev fallback
-            return _environment.IsDevelopment() ? DevUserId : SystemUserId;
+            // No HTTP context: background worker context
+            if (_httpContextAccessor.HttpContext is null)
+                return SystemUserId;
+
+            return null;
         }
     }
 
@@ -37,9 +30,13 @@ public class CurrentUserService : ICurrentUserService
         get
         {
             var claimValue = _httpContextAccessor.HttpContext?.User?.FindFirstValue(ClaimTypes.Name);
-            if (claimValue is not null) return claimValue;
+            if (!string.IsNullOrEmpty(claimValue))
+                return claimValue;
 
-            return _environment.IsDevelopment() ? DevUserName : SystemUserName;
+            if (_httpContextAccessor.HttpContext is null)
+                return SystemUserName;
+
+            return null;
         }
     }
 }

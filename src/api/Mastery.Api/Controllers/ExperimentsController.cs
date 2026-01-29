@@ -12,6 +12,7 @@ using Mastery.Application.Features.Experiments.Queries.GetActiveExperiment;
 using Mastery.Application.Features.Experiments.Queries.GetExperimentById;
 using Mastery.Application.Features.Experiments.Queries.GetExperiments;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Mastery.Api.Controllers;
@@ -21,6 +22,7 @@ namespace Mastery.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/experiments")]
+[Authorize]
 public class ExperimentsController : ControllerBase
 {
     private readonly ISender _mediator;

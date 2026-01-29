@@ -6,6 +6,7 @@ namespace Mastery.Domain.Entities.Recommendation;
 /// <summary>
 /// Tracks each execution cycle of the background recommendation worker.
 /// </summary>
+[EmbeddingIgnore]
 public sealed class RecommendationRunHistory : BaseEntity, IAggregateRoot
 {
     private static readonly JsonSerializerOptions JsonOptions = new()

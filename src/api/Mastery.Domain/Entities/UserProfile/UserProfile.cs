@@ -11,13 +11,8 @@ namespace Mastery.Domain.Entities.UserProfile;
 /// uses to interpret signals and rank actions.
 /// Changes infrequently (onboarding, occasional edits, quarterly season reset).
 /// </summary>
-public sealed class UserProfile : AuditableEntity, IAggregateRoot
+public sealed class UserProfile : OwnedEntity, IAggregateRoot
 {
-    /// <summary>
-    /// External auth system user ID.
-    /// </summary>
-    public string UserId { get; private set; } = null!;
-
     /// <summary>
     /// User's timezone (essential for schedules/check-ins).
     /// </summary>
@@ -31,6 +26,7 @@ public sealed class UserProfile : AuditableEntity, IAggregateRoot
     /// <summary>
     /// Version of onboarding completed (supports progressive profiling).
     /// </summary>
+    [EmbeddingIgnore]
     public int OnboardingVersion { get; private set; }
 
     /// <summary>

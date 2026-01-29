@@ -1,11 +1,29 @@
+using Azure.Identity;
 using Mastery.Application.Common.Interfaces;
+using Mastery.Application.Features.Recommendations.Services;
+using Mastery.Domain.Entities;
+using Mastery.Domain.Entities.CheckIn;
+using Mastery.Domain.Entities.Experiment;
+using Mastery.Domain.Entities.Goal;
+using Mastery.Domain.Entities.Habit;
+using Mastery.Domain.Entities.Metrics;
+using Mastery.Domain.Entities.Project;
+using Mastery.Domain.Entities.UserProfile;
 using Mastery.Domain.Interfaces;
 using Mastery.Infrastructure.Data;
+using Mastery.Infrastructure.Embeddings;
+using Mastery.Infrastructure.Embeddings.Strategies;
+using Mastery.Infrastructure.Identity;
+using Mastery.Infrastructure.Identity.Services;
+using Mastery.Infrastructure.Outbox;
 using Mastery.Infrastructure.Repositories;
 using Mastery.Infrastructure.Services;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.Azure.Cosmos;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Task = Mastery.Domain.Entities.Task.Task;
 
 
 namespace Mastery.Infrastructure;
@@ -41,17 +59,116 @@ public static class DependencyInjection
         services.AddScoped<ICheckInRepository, CheckInRepository>();
         services.AddScoped<IExperimentRepository, ExperimentRepository>();
         services.AddScoped<IRecommendationRepository, RecommendationRepository>();
-        services.AddScoped<IDiagnosticSignalRepository, DiagnosticSignalRepository>();
         services.AddScoped<IRecommendationRunHistoryRepository, RecommendationRunHistoryRepository>();
+        services.AddScoped<Outbox.IOutboxRepository, OutboxRepository>();
 
         services.AddSingleton<IDateTimeProvider, DateTimeProvider>();
 
-        // OpenAI recommendation orchestrator
+        // Outbox processing services
+        services.AddScoped<IEntityResolver, EntityResolver>();
+        services.AddScoped<Outbox.IEmbeddingProcessor, EmbeddingProcessor>();
+
+        // OpenAI configuration
         services.Configure<OpenAiOptions>(opts =>
             configuration.GetSection(OpenAiOptions.SectionName).Bind(opts));
+
+        // OpenAI recommendation orchestrator
         services.AddScoped<LlmResponseParser>();
         services.AddScoped<IRecommendationOrchestrator, OpenAiLlmOrchestrator>();
 
+        // Simple action executor for server-side recommendation actions (ExecuteToday, Defer)
+        services.AddScoped<ISimpleActionExecutor, SimpleActionExecutor>();
+
+        // Tool call handler for LLM executor
+        services.AddScoped<IToolCallHandler, OpenAiToolCallHandler>();
+
+        // LLM executor for recommendation actions via OpenAI tool calling
+        services.AddScoped<ILlmExecutor, OpenAiLlmExecutor>();
+
+        // Vector store / embedding services
+        AddVectorStoreServices(services, configuration);
+
+        // Identity configuration
+        services.AddIdentity<ApplicationUser, IdentityRole>(options =>
+        {
+            // Password requirements (balanced security/usability)
+            options.Password.RequiredLength = 8;
+            options.Password.RequireDigit = true;
+            options.Password.RequireLowercase = true;
+            options.Password.RequireUppercase = true;
+            options.Password.RequireNonAlphanumeric = false;
+
+            // Lockout policy
+            options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+            options.Lockout.MaxFailedAccessAttempts = 5;
+            options.Lockout.AllowedForNewUsers = true;
+
+            // User requirements
+            options.User.RequireUniqueEmail = true;
+
+            // Minimal friction - no email confirmation required
+            options.SignIn.RequireConfirmedEmail = false;
+            options.SignIn.RequireConfirmedAccount = false;
+        })
+        .AddEntityFrameworkStores<MasteryDbContext>()
+        .AddDefaultTokenProviders();
+
+        // JWT configuration
+        services.Configure<JwtSettings>(configuration.GetSection(JwtSettings.SectionName));
+
+        // Auth services
+        services.AddScoped<IJwtService, JwtService>();
+        services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IEmailService, EmailService>();
+        services.AddScoped<IUserManagementService, UserManagementService>();
+
         return services;
+    }
+
+    private static void AddVectorStoreServices(IServiceCollection services, IConfiguration configuration)
+    {
+        // Cosmos DB configuration
+        services.Configure<CosmosDbOptions>(opts =>
+            configuration.GetSection(CosmosDbOptions.SectionName).Bind(opts));
+
+        var cosmosOptions = configuration.GetSection(CosmosDbOptions.SectionName).Get<CosmosDbOptions>()
+            ?? throw new InvalidOperationException("CosmosDbOptions configuration section is missing");
+
+        // Register Cosmos client as singleton
+        services.AddSingleton(sp =>
+        {
+            var options = new CosmosClientOptions
+            {
+                SerializerOptions = new CosmosSerializationOptions
+                {
+                    PropertyNamingPolicy = CosmosPropertyNamingPolicy.CamelCase,
+                },
+                ConnectionMode = ConnectionMode.Direct,
+                MaxRetryAttemptsOnRateLimitedRequests = 5,
+                MaxRetryWaitTimeOnRateLimitedRequests = TimeSpan.FromSeconds(30),
+            };
+
+            return new CosmosClient(cosmosOptions.Endpoint, cosmosOptions.Key, options);
+        });
+
+        // Register vector store
+        services.AddScoped<IVectorStore, CosmosVectorStore>();
+
+        // Register embedding service
+        services.AddScoped<IEmbeddingService, OpenAiEmbeddingService>();
+
+        // Register embedding text strategy factory
+        services.AddScoped<IEmbeddingTextStrategyFactory, EmbeddingTextStrategyFactory>();
+
+        // Register individual embedding text strategies
+        services.AddScoped<IEmbeddingTextStrategy<Goal>, GoalEmbeddingTextStrategy>();
+        services.AddScoped<IEmbeddingTextStrategy<Habit>, HabitEmbeddingTextStrategy>();
+        services.AddScoped<IEmbeddingTextStrategy<Task>, TaskEmbeddingTextStrategy>();
+        services.AddScoped<IEmbeddingTextStrategy<Project>, ProjectEmbeddingTextStrategy>();
+        services.AddScoped<IEmbeddingTextStrategy<CheckIn>, CheckInEmbeddingTextStrategy>();
+        services.AddScoped<IEmbeddingTextStrategy<Experiment>, ExperimentEmbeddingTextStrategy>();
+        services.AddScoped<IEmbeddingTextStrategy<UserProfile>, UserProfileEmbeddingTextStrategy>();
+        services.AddScoped<IEmbeddingTextStrategy<Season>, SeasonEmbeddingTextStrategy>();
+        services.AddScoped<IEmbeddingTextStrategy<MetricDefinition>, MetricDefinitionEmbeddingTextStrategy>();
     }
 }

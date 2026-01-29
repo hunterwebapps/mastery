@@ -48,4 +48,12 @@ public interface IGoalRepository : IRepository<Goal>
         Guid id,
         string userId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Adds a GoalMetric to be tracked by the DbContext.
+    /// Use this when adding a metric to a goal's collection to ensure EF Core tracks it.
+    /// </summary>
+    Task AddGoalMetricAsync(
+        GoalMetric metric,
+        CancellationToken cancellationToken = default);
 }

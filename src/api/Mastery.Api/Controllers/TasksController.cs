@@ -14,6 +14,7 @@ using Mastery.Application.Features.Tasks.Queries.GetTaskById;
 using Mastery.Application.Features.Tasks.Queries.GetTasks;
 using Mastery.Application.Features.Tasks.Queries.GetTodayTasks;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Mastery.Api.Controllers;
@@ -23,6 +24,7 @@ namespace Mastery.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/tasks")]
+[Authorize]
 public class TasksController : ControllerBase
 {
     private readonly ISender _mediator;

@@ -12,11 +12,15 @@ using Mastery.Domain.Entities.Experiment;
 using Mastery.Domain.Entities.Recommendation;
 using Mastery.Domain.Entities.UserProfile;
 using Mastery.Domain.Interfaces;
+using Mastery.Infrastructure.Identity;
+using Mastery.Infrastructure.Outbox;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 
 namespace Mastery.Infrastructure.Data;
 
-public class MasteryDbContext : DbContext, IMasteryDbContext, IUnitOfWork
+public class MasteryDbContext : IdentityDbContext<ApplicationUser>, IMasteryDbContext, IUnitOfWork
 {
     private readonly ICurrentUserService _currentUserService;
     private readonly IDateTimeProvider _dateTimeProvider;
@@ -41,8 +45,9 @@ public class MasteryDbContext : DbContext, IMasteryDbContext, IUnitOfWork
     public DbSet<ExperimentResult> ExperimentResults => Set<ExperimentResult>();
     public DbSet<Recommendation> Recommendations => Set<Recommendation>();
     public DbSet<RecommendationTrace> RecommendationTraces => Set<RecommendationTrace>();
-    public DbSet<DiagnosticSignal> DiagnosticSignals => Set<DiagnosticSignal>();
     public DbSet<RecommendationRunHistory> RecommendationRunHistory => Set<RecommendationRunHistory>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<OutboxEntry> OutboxEntries => Set<OutboxEntry>();
 
     public MasteryDbContext(
         DbContextOptions<MasteryDbContext> options,
@@ -56,12 +61,19 @@ public class MasteryDbContext : DbContext, IMasteryDbContext, IUnitOfWork
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+        // Call base first for Identity table configuration
         base.OnModelCreating(modelBuilder);
+
+        // Apply domain entity configurations
+        modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
     }
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
+        // 1. Capture outbox entries BEFORE save (entity state changes after save)
+        var outboxEntries = CaptureOutboxEntries();
+
+        // 2. Apply audit fields
         foreach (var entry in ChangeTracker.Entries<AuditableEntity>())
         {
             switch (entry.State)
@@ -78,6 +90,84 @@ public class MasteryDbContext : DbContext, IMasteryDbContext, IUnitOfWork
             }
         }
 
+        // 3. Add outbox entries to the same transaction
+        if (outboxEntries.Count > 0)
+        {
+            await OutboxEntries.AddRangeAsync(outboxEntries, cancellationToken);
+        }
+
         return await base.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Captures entity changes for aggregate roots to be processed by the outbox worker.
+    /// Skips entities with class-level [EmbeddingIgnore] on Added/Modified.
+    /// Skips modifications when only [EmbeddingIgnore] properties changed.
+    /// </summary>
+    private List<OutboxEntry> CaptureOutboxEntries()
+    {
+        var entries = new List<OutboxEntry>();
+        var now = _dateTimeProvider.UtcNow;
+
+        foreach (var entry in ChangeTracker.Entries<IAggregateRoot>())
+        {
+            if (entry.Entity is not AuditableEntity entity)
+            {
+                continue;
+            }
+
+            var entityType = entry.Entity.GetType();
+            var isClassIgnored = entityType.GetCustomAttribute<EmbeddingIgnoreAttribute>() is not null;
+
+            // Determine operation type
+            var operation = entry.State switch
+            {
+                EntityState.Added when !isClassIgnored => "Created",
+                EntityState.Modified when !isClassIgnored && HasEmbeddingRelevantChanges(entry) => "Updated",
+                EntityState.Deleted => "Deleted",
+                _ => null
+            };
+
+            if (operation is null)
+            {
+                continue;
+            }
+
+            string? userId = null;
+            if (entity is OwnedEntity ownedEntity)
+            {
+                userId = ownedEntity.UserId;
+            }
+
+            entries.Add(OutboxEntry.Create(
+                entityType.Name,
+                entity.Id,
+                operation,
+                userId,
+                now));
+        }
+
+        return entries;
+    }
+
+    /// <summary>
+    /// Checks if any modified property is NOT marked with [EmbeddingIgnore].
+    /// Returns true if at least one embedding-relevant property changed.
+    /// </summary>
+    private static bool HasEmbeddingRelevantChanges(EntityEntry entry)
+    {
+        var entityType = entry.Entity.GetType();
+
+        foreach (var property in entry.Properties)
+        {
+            if (!property.IsModified)
+                continue;
+
+            var propertyInfo = entityType.GetProperty(property.Metadata.Name);
+            if (propertyInfo?.GetCustomAttribute<EmbeddingIgnoreAttribute>() is null)
+                return true;
+        }
+
+        return false;
     }
 }

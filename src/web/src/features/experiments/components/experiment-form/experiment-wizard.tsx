@@ -13,6 +13,7 @@ import { Slider } from '@/components/ui/slider'
 import { Badge } from '@/components/ui/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
+import { AiSuggestionBanner } from '@/components/ai-suggestion-banner'
 import { cn } from '@/lib/utils'
 import { useCreateExperiment } from '../../hooks'
 import { createExperimentSchema, type CreateExperimentFormData } from '../../schemas'
@@ -61,7 +62,16 @@ const STEP_FIELDS: Record<number, Array<keyof CreateExperimentFormData | string>
   3: [],
 }
 
-export function ExperimentWizard() {
+export interface ExperimentWizardProps {
+  /** Initial data for form pre-population */
+  initialData?: Partial<CreateExperimentFormData>
+  /** Show the AI suggestion banner */
+  showAiBanner?: boolean
+  /** Called after successful creation */
+  onSuccess?: () => void
+}
+
+export function ExperimentWizard({ initialData, showAiBanner, onSuccess }: ExperimentWizardProps = {}) {
   const [currentStep, setCurrentStep] = useState(0)
   const [goalsOpen, setGoalsOpen] = useState(false)
   const [primaryMetricDialogOpen, setPrimaryMetricDialogOpen] = useState(false)
@@ -72,30 +82,45 @@ export function ExperimentWizard() {
   const { data: goals } = useGoals('Active')
   const { data: metrics } = useMetrics()
 
+  const defaultFormValues: CreateExperimentFormData = {
+    title: '',
+    description: '',
+    category: 'Other',
+    createdFrom: 'Manual',
+    hypothesis: {
+      change: '',
+      expectedOutcome: '',
+      rationale: '',
+    },
+    measurementPlan: {
+      primaryMetricDefinitionId: '',
+      primaryAggregation: 'Average',
+      baselineWindowDays: 7,
+      runWindowDays: 7,
+      guardrailMetricDefinitionIds: [],
+      minComplianceThreshold: 0.7,
+    },
+    linkedGoalIds: [],
+    startDate: '',
+    endDatePlanned: '',
+  }
+
   const form = useForm<CreateExperimentFormData>({
     resolver: zodResolver(createExperimentSchema),
-    defaultValues: {
-      title: '',
-      description: '',
-      category: 'Other',
-      createdFrom: 'Manual',
-      hypothesis: {
-        change: '',
-        expectedOutcome: '',
-        rationale: '',
-      },
-      measurementPlan: {
-        primaryMetricDefinitionId: '',
-        primaryAggregation: 'Average',
-        baselineWindowDays: 7,
-        runWindowDays: 7,
-        guardrailMetricDefinitionIds: [],
-        minComplianceThreshold: 0.7,
-      },
-      linkedGoalIds: [],
-      startDate: '',
-      endDatePlanned: '',
-    },
+    defaultValues: initialData
+      ? {
+          ...defaultFormValues,
+          ...initialData,
+          hypothesis: {
+            ...defaultFormValues.hypothesis,
+            ...initialData.hypothesis,
+          },
+          measurementPlan: {
+            ...defaultFormValues.measurementPlan,
+            ...initialData.measurementPlan,
+          },
+        }
+      : defaultFormValues,
     mode: 'onTouched',
   })
 
@@ -153,6 +178,7 @@ export function ExperimentWizard() {
         startDate: data.startDate || undefined,
         endDatePlanned: data.endDatePlanned || undefined,
       })
+      onSuccess?.()
       navigate(`/experiments/${result}`)
     } catch {
       // Error is handled by TanStack Query
@@ -241,6 +267,9 @@ export function ExperimentWizard() {
                   Name your experiment and choose a category to get started.
                 </p>
               </div>
+
+              {/* AI Suggestion Banner */}
+              {showAiBanner && <AiSuggestionBanner />}
 
               <div className="space-y-4">
                 <div className="space-y-2">

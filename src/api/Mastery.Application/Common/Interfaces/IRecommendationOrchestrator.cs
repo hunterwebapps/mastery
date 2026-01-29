@@ -1,5 +1,4 @@
 using Mastery.Application.Common.Models;
-using Mastery.Domain.Entities.Recommendation;
 using Mastery.Domain.Enums;
 
 namespace Mastery.Application.Common.Interfaces;
@@ -11,12 +10,14 @@ public sealed record RecommendationOrchestrationResult(
     string? ModelVersion = null,
     string? RawResponse = null);
 
+/// <summary>
+/// Orchestrates the LLM-driven recommendation pipeline:
+/// Stage 1 (Assessment) → Stage 2 (Strategy) → Stage 3 (Domain Generation)
+/// </summary>
 public interface IRecommendationOrchestrator
 {
     Task<RecommendationOrchestrationResult> OrchestrateAsync(
-        IReadOnlyList<RecommendationCandidate> rankedCandidates,
         UserStateSnapshot state,
-        IReadOnlyList<DiagnosticSignal> signals,
         RecommendationContext context,
         CancellationToken cancellationToken = default);
 }

@@ -1,33 +1,35 @@
 using Mastery.Application.Common.Interfaces;
+using Mastery.Application.Features.Recommendations.Models;
+using Mastery.Domain.Enums;
 using Mastery.Domain.Exceptions;
 using Mastery.Domain.Interfaces;
 using Microsoft.Extensions.Logging;
 
 namespace Mastery.Application.Features.Recommendations.Commands.AcceptRecommendation;
 
-public sealed class AcceptRecommendationCommandHandler : ICommandHandler<AcceptRecommendationCommand>
+public sealed class AcceptRecommendationCommandHandler : ICommandHandler<AcceptRecommendationCommand, ExecutionResult>
 {
     private readonly IRecommendationRepository _recommendationRepository;
     private readonly ICurrentUserService _currentUserService;
-    private readonly IRecommendationExecutor _executor;
+    private readonly ILlmExecutor _llmExecutor;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<AcceptRecommendationCommandHandler> _logger;
 
     public AcceptRecommendationCommandHandler(
         IRecommendationRepository recommendationRepository,
         ICurrentUserService currentUserService,
-        IRecommendationExecutor executor,
+        ILlmExecutor llmExecutor,
         IUnitOfWork unitOfWork,
         ILogger<AcceptRecommendationCommandHandler> logger)
     {
         _recommendationRepository = recommendationRepository;
         _currentUserService = currentUserService;
-        _executor = executor;
+        _llmExecutor = llmExecutor;
         _unitOfWork = unitOfWork;
         _logger = logger;
     }
 
-    public async Task Handle(AcceptRecommendationCommand request, CancellationToken cancellationToken)
+    public async Task<ExecutionResult> Handle(AcceptRecommendationCommand request, CancellationToken cancellationToken)
     {
         var userId = _currentUserService.UserId
             ?? throw new DomainException("User not authenticated.");
@@ -40,19 +42,36 @@ public sealed class AcceptRecommendationCommandHandler : ICommandHandler<AcceptR
 
         recommendation.Accept();
 
-        // Auto-execute: dispatch the appropriate command based on ActionPayload
-        if (!string.IsNullOrEmpty(recommendation.ActionPayload))
+        // Non-executable action kinds (reflection prompts, etc.)
+        if (recommendation.ActionKind is RecommendationActionKind.ReflectPrompt
+            or RecommendationActionKind.LearnPrompt)
         {
-            var entityId = await _executor.ExecuteAsync(recommendation, cancellationToken);
-            if (entityId is not null)
-            {
-                recommendation.MarkExecuted();
-                _logger.LogInformation(
-                    "Recommendation {RecommendationId} auto-executed: created/updated entity {EntityId}",
-                    recommendation.Id, entityId);
-            }
+            _logger.LogInformation(
+                "Recommendation {Id} accepted (non-executable {ActionKind})",
+                recommendation.Id, recommendation.ActionKind);
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            return ExecutionResult.NonExecutable();
+        }
+
+        // Execute via LLM tool calling (handles all action kinds)
+        var result = await _llmExecutor.ExecuteAsync(recommendation, cancellationToken);
+
+        if (result.Success)
+        {
+            recommendation.MarkExecuted();
+            _logger.LogInformation(
+                "Recommendation {Id} executed via LLM: {ActionKind} {EntityKind} {EntityId}",
+                recommendation.Id, recommendation.ActionKind, result.EntityKind, result.EntityId);
+        }
+        else
+        {
+            _logger.LogWarning(
+                "Recommendation {Id} execution failed: {Error}",
+                recommendation.Id, result.ErrorMessage);
         }
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+        return result;
     }
 }

@@ -6,6 +6,7 @@ namespace Mastery.Domain.Entities.Recommendation;
 /// Audit trail for a recommendation - stores the full pipeline context.
 /// Child entity of Recommendation (not an aggregate root).
 /// </summary>
+[EmbeddingIgnore]
 public sealed class RecommendationTrace : AuditableEntity
 {
     public Guid RecommendationId { get; private set; }

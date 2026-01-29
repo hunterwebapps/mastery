@@ -11,16 +11,12 @@ namespace Mastery.Domain.Entities.CheckIn;
 /// capturing energy, mode, top priority, and end-of-day reflections.
 /// One morning and one evening check-in per user per date.
 /// </summary>
-public sealed class CheckIn : AuditableEntity, IAggregateRoot
+public sealed class CheckIn : OwnedEntity, IAggregateRoot
 {
-    /// <summary>
-    /// The user who owns this check-in.
-    /// </summary>
-    public string UserId { get; private set; } = null!;
-
     /// <summary>
     /// The user-local date this check-in is for.
     /// </summary>
+    [EmbeddingIgnore]
     public DateOnly CheckInDate { get; private set; }
 
     /// <summary>

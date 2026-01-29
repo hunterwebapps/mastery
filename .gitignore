@@ -61,6 +61,7 @@ yarn-error.log*
 
 # Claude Code
 .claude/
+.mcp.json
 
 # Misc
 *.tsbuildinfo

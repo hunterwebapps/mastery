@@ -8,11 +8,24 @@ export type RecommendationType =
   | 'TaskBreakdownSuggestion'
   | 'ScheduleAdjustmentSuggestion'
   | 'ProjectStuckFix'
+  | 'ProjectSuggestion'
   | 'ExperimentRecommendation'
   | 'GoalScoreboardSuggestion'
   | 'HabitFromLeadMetricSuggestion'
   | 'CheckInConsistencyNudge'
   | 'MetricObservationReminder'
+  // Edit/Archive suggestions
+  | 'TaskEditSuggestion'
+  | 'TaskArchiveSuggestion'
+  | 'HabitEditSuggestion'
+  | 'HabitArchiveSuggestion'
+  | 'GoalEditSuggestion'
+  | 'GoalArchiveSuggestion'
+  | 'ProjectEditSuggestion'
+  | 'ProjectArchiveSuggestion'
+  | 'MetricEditSuggestion'
+  | 'ExperimentEditSuggestion'
+  | 'ExperimentArchiveSuggestion'
 
 export type RecommendationStatus = 'Pending' | 'Accepted' | 'Dismissed' | 'Snoozed' | 'Expired' | 'Executed'
 
@@ -69,6 +82,7 @@ export interface RecommendationDto {
   title: string
   rationale: string
   actionPayload?: string
+  actionSummary?: string
   score: number
   expiresAt?: string
   respondedAt?: string
@@ -90,9 +104,27 @@ export interface RecommendationSummaryDto {
   actionKind: RecommendationActionKind
   title: string
   rationale: string
+  actionSummary?: string
   score: number
   expiresAt?: string
   createdAt: string
+}
+
+export interface ExecutionResult {
+  entityId?: string
+  entityKind?: string
+  success: boolean
+  errorMessage?: string
+  /** JSON payload for client-side form pre-population */
+  actionPayload?: string
+  /** The action kind (Create, Update, Remove, etc.) */
+  actionKind?: string
+  /** The target entity kind (Task, Habit, Goal, etc.) */
+  targetKind?: string
+  /** The target entity ID for Update/Remove actions */
+  targetEntityId?: string
+  /** True for Create/Update/Remove actions that require client-side form navigation */
+  requiresClientAction?: boolean
 }
 
 export interface RecommendationTraceDto {
@@ -149,11 +181,25 @@ export const recommendationTypeInfo: Record<RecommendationType, { label: string;
   TaskBreakdownSuggestion: { label: 'Task Breakdown', description: 'Break a large task into smaller steps', color: 'text-blue-400', bgColor: 'bg-blue-500/10' },
   ScheduleAdjustmentSuggestion: { label: 'Schedule Adjustment', description: 'Suggested schedule change', color: 'text-teal-400', bgColor: 'bg-teal-500/10' },
   ProjectStuckFix: { label: 'Project Unstick', description: 'Action to unblock a stuck project', color: 'text-rose-400', bgColor: 'bg-rose-500/10' },
+  ProjectSuggestion: { label: 'New Project', description: 'Suggested project to organize work', color: 'text-pink-400', bgColor: 'bg-pink-500/10' },
   ExperimentRecommendation: { label: 'Experiment', description: 'Suggested experiment to run', color: 'text-violet-400', bgColor: 'bg-violet-500/10' },
   GoalScoreboardSuggestion: { label: 'Goal Scoreboard', description: 'Improve goal measurement setup', color: 'text-amber-400', bgColor: 'bg-amber-500/10' },
   HabitFromLeadMetricSuggestion: { label: 'Habit from Metric', description: 'Create a habit to drive a lead metric', color: 'text-lime-400', bgColor: 'bg-lime-500/10' },
   CheckInConsistencyNudge: { label: 'Check-in Nudge', description: 'Encouragement to maintain check-in streak', color: 'text-cyan-400', bgColor: 'bg-cyan-500/10' },
   MetricObservationReminder: { label: 'Metric Reminder', description: 'Reminder to record a metric observation', color: 'text-orange-400', bgColor: 'bg-orange-500/10' },
+  // Edit suggestions
+  TaskEditSuggestion: { label: 'Edit Task', description: 'Suggested task modification', color: 'text-blue-400', bgColor: 'bg-blue-500/10' },
+  HabitEditSuggestion: { label: 'Edit Habit', description: 'Suggested habit modification', color: 'text-sky-400', bgColor: 'bg-sky-500/10' },
+  GoalEditSuggestion: { label: 'Edit Goal', description: 'Suggested goal modification', color: 'text-amber-400', bgColor: 'bg-amber-500/10' },
+  ProjectEditSuggestion: { label: 'Edit Project', description: 'Suggested project modification', color: 'text-rose-400', bgColor: 'bg-rose-500/10' },
+  MetricEditSuggestion: { label: 'Edit Metric', description: 'Suggested metric modification', color: 'text-orange-400', bgColor: 'bg-orange-500/10' },
+  ExperimentEditSuggestion: { label: 'Edit Experiment', description: 'Suggested experiment modification', color: 'text-violet-400', bgColor: 'bg-violet-500/10' },
+  // Archive suggestions
+  TaskArchiveSuggestion: { label: 'Archive Task', description: 'Suggested task to archive', color: 'text-gray-400', bgColor: 'bg-gray-500/10' },
+  HabitArchiveSuggestion: { label: 'Archive Habit', description: 'Suggested habit to archive', color: 'text-gray-400', bgColor: 'bg-gray-500/10' },
+  GoalArchiveSuggestion: { label: 'Archive Goal', description: 'Suggested goal to archive', color: 'text-gray-400', bgColor: 'bg-gray-500/10' },
+  ProjectArchiveSuggestion: { label: 'Archive Project', description: 'Suggested project to archive', color: 'text-gray-400', bgColor: 'bg-gray-500/10' },
+  ExperimentArchiveSuggestion: { label: 'Archive Experiment', description: 'Suggested experiment to archive', color: 'text-gray-400', bgColor: 'bg-gray-500/10' },
 }
 
 export const signalTypeInfo: Record<SignalType, { label: string; icon: string; color: string; bgColor: string }> = {

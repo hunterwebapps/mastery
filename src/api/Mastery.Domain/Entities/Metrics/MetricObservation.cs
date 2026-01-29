@@ -9,17 +9,12 @@ namespace Mastery.Domain.Entities.Metrics;
 /// Represents a single observation/measurement for a metric at a point in time.
 /// This is append-only; corrections create new observations with correction references.
 /// </summary>
-public sealed class MetricObservation : BaseEntity
+public sealed class MetricObservation : OwnedEntity
 {
     /// <summary>
     /// The metric definition this observation belongs to.
     /// </summary>
     public Guid MetricDefinitionId { get; private set; }
-
-    /// <summary>
-    /// The user who owns this observation.
-    /// </summary>
-    public string UserId { get; private set; } = null!;
 
     /// <summary>
     /// The exact timestamp when the observation was recorded (UTC).
@@ -53,11 +48,6 @@ public sealed class MetricObservation : BaseEntity
     /// Optional note about this observation.
     /// </summary>
     public string? Note { get; private set; }
-
-    /// <summary>
-    /// When this observation was created (system timestamp).
-    /// </summary>
-    public DateTime CreatedAt { get; private set; }
 
     /// <summary>
     /// If this is a correction, the ID of the observation being corrected.
@@ -97,7 +87,6 @@ public sealed class MetricObservation : BaseEntity
             Source = source,
             CorrelationId = correlationId,
             Note = note,
-            CreatedAt = DateTime.UtcNow,
             IsCorrected = false
         };
 
@@ -136,7 +125,6 @@ public sealed class MetricObservation : BaseEntity
             Source = MetricSourceType.Manual, // Corrections are always manual
             CorrelationId = CorrelationId,
             Note = note ?? $"Correction of value from {Value} to {newValue}",
-            CreatedAt = DateTime.UtcNow,
             CorrectedObservationId = Id,
             IsCorrected = false
         };

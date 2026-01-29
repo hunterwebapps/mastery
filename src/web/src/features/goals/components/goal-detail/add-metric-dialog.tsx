@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ArrowLeft, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -46,6 +46,7 @@ interface AddMetricDialogProps {
   onCreateAndAddMetric: (data: CreateMetricDefinitionFormData, config: Omit<MetricConfiguration, 'metricDefinitionId'>) => Promise<void>
   isAdding?: boolean
   isCreating?: boolean
+  preselectedKind?: MetricKind | null
 }
 
 interface MetricPickerItemProps {
@@ -116,11 +117,22 @@ export function AddMetricDialog({
   onCreateAndAddMetric,
   isAdding,
   isCreating,
+  preselectedKind,
 }: AddMetricDialogProps) {
   const [view, setView] = useState<DialogView>('list')
   const [selectedDefinition, setSelectedDefinition] = useState<MetricDefinitionDto | null>(null)
   const [pendingCreateData, setPendingCreateData] = useState<CreateMetricDefinitionFormData | null>(null)
-  const [config, setConfig] = useState<ConfigState>(defaultConfig)
+  const [config, setConfig] = useState<ConfigState>(() => ({
+    ...defaultConfig,
+    kind: preselectedKind ?? defaultConfig.kind,
+  }))
+
+  // Update config when preselectedKind changes (from query param)
+  useEffect(() => {
+    if (preselectedKind) {
+      setConfig((prev) => ({ ...prev, kind: preselectedKind }))
+    }
+  }, [preselectedKind])
 
   const handleClose = () => {
     onOpenChange(false)

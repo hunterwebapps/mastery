@@ -1,17 +1,56 @@
-import { createBrowserRouter, RouterProvider } from 'react-router-dom'
+import { createBrowserRouter, Outlet, RouterProvider } from 'react-router-dom'
 import { RootLayout } from './root-layout'
+import { RequireAuth, RequireRole, RedirectIfComplete } from '@/components/auth'
 
 const router = createBrowserRouter([
-  // Onboarding route (outside main layout)
+  // === PUBLIC ROUTES ===
+
+  // Standalone login (for returning users)
   {
-    path: '/onboarding',
-    lazy: () => import('@/features/onboarding/pages/onboarding-page'),
+    path: '/login',
+    lazy: () => import('@/features/auth/pages/login-page'),
   },
 
-  // Main authenticated routes
+  // Password recovery
+  {
+    path: '/forgot-password',
+    lazy: () => import('@/features/auth/pages/forgot-password-page'),
+  },
+  {
+    path: '/reset-password',
+    lazy: () => import('@/features/auth/pages/reset-password-page'),
+  },
+
+  // OAuth callback handler
+  {
+    path: '/auth/callback',
+    lazy: () => import('@/features/auth/pages/auth-callback-page'),
+  },
+
+  // Onboarding route (includes registration as final step)
+  // Wrapped with RedirectIfComplete to prevent completed users from re-entering
+  {
+    path: '/onboarding',
+    lazy: async () => {
+      const { Component } = await import('@/features/onboarding/pages/onboarding-page')
+      return {
+        element: (
+          <RedirectIfComplete>
+            <Component />
+          </RedirectIfComplete>
+        ),
+      }
+    },
+  },
+
+  // === PROTECTED ROUTES ===
   {
     path: '/',
-    element: <RootLayout />,
+    element: (
+      <RequireAuth>
+        <RootLayout />
+      </RequireAuth>
+    ),
     children: [
       {
         index: true,
@@ -112,6 +151,25 @@ const router = createBrowserRouter([
       {
         path: 'profile',
         lazy: () => import('@/features/profile/pages/profile-page'),
+      },
+      // Admin routes
+      {
+        path: 'admin',
+        element: (
+          <RequireRole roles={['Super', 'Admin']}>
+            <Outlet />
+          </RequireRole>
+        ),
+        children: [
+          {
+            path: 'users',
+            lazy: () => import('@/features/admin/pages/users-page'),
+          },
+          {
+            path: 'users/:id',
+            lazy: () => import('@/features/admin/pages/user-detail-page'),
+          },
+        ],
       },
     ],
   },

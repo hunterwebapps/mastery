@@ -8,6 +8,7 @@ using Mastery.Application.Features.Goals.Models;
 using Mastery.Application.Features.Goals.Queries.GetGoalById;
 using Mastery.Application.Features.Goals.Queries.GetGoals;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Mastery.Api.Controllers;
@@ -17,6 +18,7 @@ namespace Mastery.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/goals")]
+[Authorize]
 public class GoalsController : ControllerBase
 {
     private readonly ISender _mediator;

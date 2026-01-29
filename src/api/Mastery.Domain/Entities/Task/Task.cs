@@ -11,14 +11,9 @@ namespace Mastery.Domain.Entities.Task;
 /// Represents a task in the Mastery system.
 /// Tasks are the primary "actuators" in the control loop - converting user intentions into discrete execution steps.
 /// </summary>
-public sealed class Task : AuditableEntity, IAggregateRoot
+public sealed class Task : OwnedEntity, IAggregateRoot
 {
     #region Properties
-
-    /// <summary>
-    /// The user who owns this task.
-    /// </summary>
-    public string UserId { get; private set; } = null!;
 
     /// <summary>
     /// Optional project this task belongs to.
@@ -64,6 +59,7 @@ public sealed class Task : AuditableEntity, IAggregateRoot
     /// <summary>
     /// Display order for sorting in lists.
     /// </summary>
+    [EmbeddingIgnore]
     public int DisplayOrder { get; private set; }
 
     /// <summary>
@@ -119,6 +115,7 @@ public sealed class Task : AuditableEntity, IAggregateRoot
     /// <summary>
     /// Number of times this task has been rescheduled.
     /// </summary>
+    [EmbeddingIgnore]
     public int RescheduleCount { get; private set; }
 
     #endregion

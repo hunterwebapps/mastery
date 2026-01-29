@@ -2,6 +2,7 @@ using System.Text.Json;
 using Mastery.Domain.Entities;
 using Mastery.Domain.Entities.UserProfile;
 using Mastery.Domain.ValueObjects;
+using Mastery.Infrastructure.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -26,7 +27,14 @@ public class UserProfileConfiguration : IEntityTypeConfiguration<UserProfile>
 
         builder.Property(x => x.UserId)
             .IsRequired()
-            .HasMaxLength(256);
+            .HasMaxLength(450); // Match ASP.NET Identity's Id column length
+
+        // FK relationship to ApplicationUser (one-to-one)
+        builder.HasOne<ApplicationUser>()
+            .WithOne()
+            .HasForeignKey<UserProfile>(x => x.UserId)
+            .HasPrincipalKey<ApplicationUser>(x => x.Id)
+            .OnDelete(DeleteBehavior.Cascade);
 
         builder.Property(x => x.OnboardingVersion)
             .IsRequired()

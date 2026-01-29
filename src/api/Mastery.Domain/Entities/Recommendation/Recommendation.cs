@@ -10,9 +10,8 @@ namespace Mastery.Domain.Entities.Recommendation;
 /// A typed, executable recommendation produced by the recommendation pipeline.
 /// Aggregate root.
 /// </summary>
-public sealed class Recommendation : AuditableEntity, IAggregateRoot
+public sealed class Recommendation : OwnedEntity, IAggregateRoot
 {
-    public string UserId { get; private set; } = null!;
     public RecommendationType Type { get; private set; }
     public RecommendationStatus Status { get; private set; }
     public RecommendationContext Context { get; private set; }
@@ -21,14 +20,17 @@ public sealed class Recommendation : AuditableEntity, IAggregateRoot
     public string Title { get; private set; } = null!;
     public string Rationale { get; private set; } = null!;
     public string? ActionPayload { get; private set; }
+    public string? ActionSummary { get; private set; }
     public decimal Score { get; private set; }
     public DateTime? ExpiresAt { get; private set; }
+    [EmbeddingIgnore]
     public DateTime? RespondedAt { get; private set; }
     public string? DismissReason { get; private set; }
 
     private List<Guid> _signalIds = [];
     public IReadOnlyList<Guid> SignalIds => _signalIds.AsReadOnly();
 
+    [EmbeddingIgnore]
     public RecommendationTrace? Trace { get; private set; }
 
     private Recommendation() { } // EF Core
@@ -43,6 +45,7 @@ public sealed class Recommendation : AuditableEntity, IAggregateRoot
         string rationale,
         decimal score,
         string? actionPayload = null,
+        string? actionSummary = null,
         DateTime? expiresAt = null,
         IEnumerable<Guid>? signalIds = null)
     {
@@ -67,6 +70,7 @@ public sealed class Recommendation : AuditableEntity, IAggregateRoot
             Rationale = rationale,
             Score = score,
             ActionPayload = actionPayload,
+            ActionSummary = actionSummary,
             ExpiresAt = expiresAt,
             _signalIds = signalIds?.ToList() ?? []
         };

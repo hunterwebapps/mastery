@@ -1,6 +1,9 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Plus, X, Leaf } from 'lucide-react'
 import { useOnboardingStore } from '@/stores/onboarding-store'
+import { useAuthStore } from '@/stores/auth-store'
+import { createProfileApi } from '@/features/onboarding/api'
 import { StepNavigation } from '../step-navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,9 +24,15 @@ import { seasonTypeInfo } from '@/types'
 
 const SEASON_TYPES: SeasonType[] = ['Sprint', 'Build', 'Maintain', 'Recover', 'Transition', 'Explore']
 
-export function StepSeason() {
-  const { data, setSeason, nextStep, prevStep, currentStep, totalSteps, isSubmitting } =
+interface StepSeasonProps {
+  isLastStep?: boolean
+}
+
+export function StepSeason({ isLastStep = false }: StepSeasonProps) {
+  const navigate = useNavigate()
+  const { data, setSeason, nextStep, prevStep, currentStep, totalSteps, isSubmitting, setSubmitting, reset } =
     useOnboardingStore()
+  const { setHasProfile } = useAuthStore()
 
   const [showForm, setShowForm] = useState(!!data.season)
   const [season, setSeasonData] = useState<CreateSeasonRequest>(
@@ -55,19 +64,63 @@ export function StepSeason() {
     })
   }
 
-  const handleNext = () => {
-    if (showForm && season.label.trim()) {
-      setSeason(season)
-    } else {
-      setSeason(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const createProfileAndNavigate = async (seasonData: CreateSeasonRequest | null) => {
+    if (!data.basics) {
+      setError('Please complete the basics step first')
+      return
     }
-    nextStep()
+
+    setSubmitting(true)
+    setError(null)
+
+    try {
+      await createProfileApi.createProfile({
+        timezone: data.basics.timezone,
+        locale: data.basics.locale,
+        values: data.values,
+        roles: data.roles,
+        preferences: data.preferences,
+        constraints: data.constraints,
+        initialSeason: seasonData || undefined,
+      })
+      setHasProfile(true)
+      reset()
+      navigate('/', { replace: true })
+    } catch (err) {
+      setError('Failed to create profile. Please try again.')
+      setSubmitting(false)
+    }
   }
 
-  const handleSkip = () => {
-    setSeason(null)
-    nextStep()
+  const handleNext = async () => {
+    const seasonData = showForm && season.label.trim() ? season : null
+    setSeason(seasonData)
+
+    if (isLastStep) {
+      // User is authenticated - create profile directly
+      await createProfileAndNavigate(seasonData)
+    } else {
+      // User not authenticated - go to account step
+      nextStep()
+    }
   }
+
+  const handleSkip = async () => {
+    setSeason(null)
+
+    if (isLastStep) {
+      // User is authenticated - create profile directly
+      await createProfileAndNavigate(null)
+    } else {
+      // User not authenticated - go to account step
+      nextStep()
+    }
+  }
+
+  // Use effective total steps based on whether this is the last step
+  const effectiveTotalSteps = isLastStep ? 6 : totalSteps
 
   return (
     <div className="space-y-8">
@@ -78,6 +131,12 @@ export function StepSeason() {
           Mastery calibrate expectations and coaching style.
         </p>
       </div>
+
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
       {!showForm ? (
         <div className="space-y-6">
@@ -249,12 +308,12 @@ export function StepSeason() {
 
       <StepNavigation
         currentStep={currentStep}
-        totalSteps={totalSteps}
+        totalSteps={effectiveTotalSteps}
         onNext={handleNext}
         onPrev={prevStep}
         isNextDisabled={showForm && !season.label.trim()}
         isSubmitting={isSubmitting}
-        nextLabel={currentStep === totalSteps ? 'Complete Setup' : undefined}
+        nextLabel={isLastStep ? 'Complete Setup' : 'Continue'}
         showSkip={!showForm}
         onSkip={handleSkip}
       />

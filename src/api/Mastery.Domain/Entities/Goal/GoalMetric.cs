@@ -54,6 +54,7 @@ public sealed class GoalMetric : AuditableEntity
     /// <summary>
     /// Display order within the scoreboard.
     /// </summary>
+    [EmbeddingIgnore]
     public int DisplayOrder { get; private set; }
 
     /// <summary>

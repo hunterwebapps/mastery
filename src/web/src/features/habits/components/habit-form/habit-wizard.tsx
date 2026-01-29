@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { ArrowLeft, ArrowRight, Check, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
+import { AiSuggestionBanner } from '@/components/ai-suggestion-banner'
 import { useCreateHabit, useUpdateHabit } from '../../hooks/use-habits'
 import { createHabitSchema, type CreateHabitFormData } from '../../schemas/habit-schema'
 import { getDefaultHabitFormData } from '../../utils'
@@ -24,11 +25,15 @@ export interface HabitWizardProps {
   /** Mode determines create vs edit behavior */
   mode: 'create' | 'edit'
   /** Initial data for edit mode - pre-populates the form */
-  initialData?: CreateHabitFormData
+  initialData?: Partial<CreateHabitFormData>
   /** Habit ID for edit mode */
   habitId?: string
   /** Where to navigate on cancel */
   cancelPath?: string
+  /** Show the AI suggestion banner when form is pre-filled from recommendation */
+  showAiBanner?: boolean
+  /** Called after successful save (for clearing recommendation payload) */
+  onSuccess?: () => void
 }
 
 export function HabitWizard({
@@ -36,6 +41,8 @@ export function HabitWizard({
   initialData,
   habitId,
   cancelPath = '/habits',
+  showAiBanner,
+  onSuccess,
 }: HabitWizardProps) {
   const navigate = useNavigate()
   const [currentStep, setCurrentStep] = useState(0)
@@ -47,7 +54,7 @@ export function HabitWizard({
 
   const methods = useForm<CreateHabitFormData>({
     resolver: zodResolver(createHabitSchema),
-    defaultValues: initialData ?? getDefaultHabitFormData(),
+    defaultValues: { ...getDefaultHabitFormData(), ...initialData },
     mode: 'onChange',
   })
 
@@ -137,9 +144,11 @@ export function HabitWizard({
           id: habitId,
           request: requestData,
         })
+        onSuccess?.()
         navigate(`/habits/${habitId}`)
       } else {
         const newHabitId = await createHabit.mutateAsync(requestData)
+        onSuccess?.()
         navigate(`/habits/${newHabitId}`)
       }
     } catch (error) {
@@ -177,6 +186,9 @@ export function HabitWizard({
           </div>
           <Progress value={progress} className="h-1" />
         </div>
+
+        {/* AI Suggestion Banner */}
+        {showAiBanner && currentStep === 0 && <AiSuggestionBanner />}
 
         {/* Step Indicators */}
         <div className="flex justify-center">

@@ -10,13 +10,8 @@ namespace Mastery.Domain.Entities;
 /// what tradeoffs are acceptable, which roles/goals deserve priority,
 /// and what intensity level is realistic.
 /// </summary>
-public sealed class Season : AuditableEntity, IAggregateRoot
+public sealed class Season : OwnedEntity, IAggregateRoot
 {
-    /// <summary>
-    /// The user who owns this season.
-    /// </summary>
-    public string UserId { get; private set; } = null!;
-
     /// <summary>
     /// User-facing name for the season (e.g., "Q1 Career Ramp", "New Baby Season").
     /// </summary>
@@ -40,6 +35,7 @@ public sealed class Season : AuditableEntity, IAggregateRoot
     /// <summary>
     /// When this season actually ended (set when ending the season).
     /// </summary>
+    [EmbeddingIgnore]
     public DateOnly? ActualEndDate { get; private set; }
 
     /// <summary>

@@ -88,7 +88,12 @@ public sealed class UpdateGoalScoreboardCommandHandler : ICommandHandler<UpdateG
         // Replace all metrics
         goal.UpdateMetrics(newMetrics);
 
-        await _goalRepository.UpdateAsync(goal, cancellationToken);
+        // Explicitly add all new metrics to ensure EF Core tracks them
+        foreach (var metric in newMetrics)
+        {
+            await _goalRepository.AddGoalMetricAsync(metric, cancellationToken);
+        }
+
         await _unitOfWork.SaveChangesAsync(cancellationToken);
     }
 

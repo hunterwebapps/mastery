@@ -10,13 +10,8 @@ namespace Mastery.Domain.Entities.Metrics;
 /// Represents a reusable metric definition in the user's metric library.
 /// This is the "what is measured" - separate from how it's used in any specific goal.
 /// </summary>
-public sealed class MetricDefinition : AuditableEntity, IAggregateRoot
+public sealed class MetricDefinition : OwnedEntity, IAggregateRoot
 {
-    /// <summary>
-    /// The user who owns this metric definition.
-    /// </summary>
-    public string UserId { get; private set; } = null!;
-
     /// <summary>
     /// Display name of the metric (e.g., "Deep Work Minutes", "Body Weight").
     /// </summary>

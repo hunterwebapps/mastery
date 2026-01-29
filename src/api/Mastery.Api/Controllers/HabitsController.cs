@@ -11,6 +11,7 @@ using Mastery.Application.Features.Habits.Queries.GetHabitHistory;
 using Mastery.Application.Features.Habits.Queries.GetHabits;
 using Mastery.Application.Features.Habits.Queries.GetTodayHabits;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Mastery.Api.Controllers;
@@ -20,6 +21,7 @@ namespace Mastery.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/habits")]
+[Authorize]
 public class HabitsController : ControllerBase
 {
     private readonly ISender _mediator;

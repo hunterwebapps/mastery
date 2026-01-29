@@ -9,14 +9,9 @@ namespace Mastery.Domain.Entities.Project;
 /// Represents a project in the Mastery system.
 /// Projects are execution containers for achieving goals - grouping related tasks into a cohesive unit.
 /// </summary>
-public sealed class Project : AuditableEntity, IAggregateRoot
+public sealed class Project : OwnedEntity, IAggregateRoot
 {
     #region Properties
-
-    /// <summary>
-    /// The user who owns this project.
-    /// </summary>
-    public string UserId { get; private set; } = null!;
 
     /// <summary>
     /// The title of the project.
@@ -84,6 +79,7 @@ public sealed class Project : AuditableEntity, IAggregateRoot
     /// <summary>
     /// When the project was completed.
     /// </summary>
+    [EmbeddingIgnore]
     public DateTime? CompletedAtUtc { get; private set; }
 
     #endregion

@@ -76,6 +76,9 @@ public class RecommendationConfiguration : IEntityTypeConfiguration<Recommendati
         builder.Property(x => x.ActionPayload)
             .HasColumnType("nvarchar(max)");
 
+        builder.Property(x => x.ActionSummary)
+            .HasMaxLength(500);
+
         builder.Property(x => x.Score)
             .HasPrecision(10, 4);
 

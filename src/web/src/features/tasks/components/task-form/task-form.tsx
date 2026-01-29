@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useNavigate } from 'react-router-dom'
@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { AiSuggestionBanner } from '@/components/ai-suggestion-banner'
 import { cn } from '@/lib/utils'
 import { createTaskSchema, type CreateTaskFormData } from '../../schemas/task-schema'
 import { useCreateTask, useUpdateTask, useMoveTaskToReady } from '../../hooks/use-tasks'
@@ -26,7 +27,7 @@ import { contextTagInfo, energyCostInfo, priorityInfo } from '@/types/task'
 
 interface TaskFormProps {
   mode: 'create' | 'edit'
-  initialData?: TaskDto
+  initialData?: TaskDto | Partial<CreateTaskFormData>
   defaultProjectId?: string
   /** When provided, called with the new task ID on successful creation instead of navigating. */
   onCreated?: (taskId: string) => void
@@ -34,6 +35,10 @@ interface TaskFormProps {
   embedded?: boolean
   /** Called when cancel is clicked in embedded mode. */
   onCancel?: () => void
+  /** Show the AI suggestion banner when form is pre-filled from recommendation. */
+  showAiBanner?: boolean
+  /** Called after successful save (for clearing recommendation payload). */
+  onSuccess?: () => void
 }
 
 const contextTags: ContextTag[] = [
@@ -47,7 +52,16 @@ const contextTags: ContextTag[] = [
   'Anywhere',
 ]
 
-export function TaskForm({ mode, initialData, defaultProjectId, onCreated, embedded, onCancel }: TaskFormProps) {
+export function TaskForm({
+  mode,
+  initialData,
+  defaultProjectId,
+  onCreated,
+  embedded,
+  onCancel,
+  showAiBanner,
+  onSuccess,
+}: TaskFormProps) {
   const navigate = useNavigate()
   const createTask = useCreateTask()
   const updateTask = useUpdateTask()
@@ -57,13 +71,16 @@ export function TaskForm({ mode, initialData, defaultProjectId, onCreated, embed
   const [startAsReady, setStartAsReady] = useState(false)
 
   const isLoading = createTask.isPending || updateTask.isPending || moveToReady.isPending
-  const isInInbox = initialData?.status === 'Inbox'
+  // Check if initialData is a full TaskDto (has id) vs partial form data
+  const taskDto = initialData && 'id' in initialData ? initialData as TaskDto : undefined
+  const isInInbox = taskDto?.status === 'Inbox'
 
   const {
     register,
     handleSubmit,
     watch,
     setValue,
+    reset,
     formState: { errors },
   } = useForm<CreateTaskFormData>({
     resolver: zodResolver(createTaskSchema),
@@ -78,6 +95,22 @@ export function TaskForm({ mode, initialData, defaultProjectId, onCreated, embed
       contextTags: initialData?.contextTags ?? [],
     },
   })
+
+  // Reset form when initialData changes (e.g., when recommendation payload is loaded)
+  useEffect(() => {
+    if (initialData) {
+      reset({
+        title: initialData.title ?? '',
+        description: initialData.description ?? '',
+        estimatedMinutes: initialData.estimatedMinutes ?? 30,
+        energyCost: initialData.energyCost ?? 3,
+        priority: initialData.priority ?? 3,
+        projectId: initialData.projectId ?? defaultProjectId ?? undefined,
+        goalId: initialData.goalId ?? undefined,
+        contextTags: initialData.contextTags ?? [],
+      })
+    }
+  }, [initialData, defaultProjectId, reset])
 
   const selectedTags = watch('contextTags') ?? []
   const energyCost = watch('energyCost') ?? 3
@@ -96,22 +129,24 @@ export function TaskForm({ mode, initialData, defaultProjectId, onCreated, embed
     try {
       if (mode === 'create') {
         const taskId = await createTask.mutateAsync({ ...data, startAsReady: asReady })
+        onSuccess?.()
         if (onCreated) {
           onCreated(taskId)
         } else {
           navigate('/tasks')
         }
         return
-      } else if (initialData) {
+      } else if (taskDto) {
         await updateTask.mutateAsync({
-          id: initialData.id,
+          id: taskDto.id,
           request: data,
         })
         // If task was in Inbox and user chose to move to Ready, do that now
         if (isInInbox && asReady) {
-          await moveToReady.mutateAsync(initialData.id)
+          await moveToReady.mutateAsync(taskDto.id)
         }
-        navigate(`/tasks/${initialData.id}`)
+        onSuccess?.()
+        navigate(`/tasks/${taskDto.id}`)
       }
     } catch (error) {
       console.error('Failed to save task:', error)
@@ -120,12 +155,22 @@ export function TaskForm({ mode, initialData, defaultProjectId, onCreated, embed
 
   const handleSaveToInbox = () => {
     setStartAsReady(false)
-    handleSubmit((data) => handleSave(data, false))()
+    handleSubmit(
+      (data) => handleSave(data, false),
+      (formErrors) => {
+        console.error('Form validation errors:', formErrors)
+      }
+    )()
   }
 
   const handleSaveAsReady = () => {
     setStartAsReady(true)
-    handleSubmit((data) => handleSave(data, true))()
+    handleSubmit(
+      (data) => handleSave(data, true),
+      (formErrors) => {
+        console.error('Form validation errors:', formErrors)
+      }
+    )()
   }
 
   return (
@@ -141,6 +186,9 @@ export function TaskForm({ mode, initialData, defaultProjectId, onCreated, embed
           </h1>
         </div>
       )}
+
+      {/* AI Suggestion Banner */}
+      {showAiBanner && <AiSuggestionBanner />}
 
       <form className="space-y-8">
         {/* Title */}

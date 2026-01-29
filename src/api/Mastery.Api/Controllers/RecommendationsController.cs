@@ -8,7 +8,10 @@ using Mastery.Application.Features.Recommendations.Queries.GetActiveRecommendati
 using Mastery.Application.Features.Recommendations.Queries.GetRecommendationById;
 using Mastery.Application.Features.Recommendations.Queries.GetRecommendationHistory;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+
+using ExecutionResult = Mastery.Application.Features.Recommendations.Models.ExecutionResult;
 
 namespace Mastery.Api.Controllers;
 
@@ -17,6 +20,7 @@ namespace Mastery.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/recommendations")]
+[Authorize]
 public class RecommendationsController : ControllerBase
 {
     private readonly ISender _mediator;
@@ -70,18 +74,31 @@ public class RecommendationsController : ControllerBase
     }
 
     /// <summary>
-    /// Accepts a recommendation.
+    /// Accepts and executes a recommendation.
+    /// Returns execution result with redirect path for the created/modified entity.
     /// </summary>
     [HttpPost("{id:guid}/accept")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ExecutionResultDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> AcceptRecommendation(
         Guid id,
         CancellationToken cancellationToken)
     {
-        await _mediator.Send(new AcceptRecommendationCommand(id), cancellationToken);
-        return NoContent();
+        var result = await _mediator.Send(new AcceptRecommendationCommand(id), cancellationToken);
+        return Ok(ToDto(result));
     }
+
+    private static ExecutionResultDto ToDto(ExecutionResult result) =>
+        new(
+            EntityId: result.EntityId?.ToString(),
+            EntityKind: result.EntityKind,
+            Success: result.Success,
+            ErrorMessage: result.ErrorMessage,
+            ActionPayload: result.ActionPayload,
+            ActionKind: result.ActionKind,
+            TargetKind: result.TargetKind,
+            TargetEntityId: result.TargetEntityId?.ToString(),
+            RequiresClientAction: result.RequiresClientAction);
 
     /// <summary>
     /// Dismisses a recommendation with optional reason.

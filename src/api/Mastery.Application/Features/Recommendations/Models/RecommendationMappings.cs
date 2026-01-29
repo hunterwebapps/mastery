@@ -20,6 +20,7 @@ public static class RecommendationMappings
             Title = rec.Title,
             Rationale = rec.Rationale,
             ActionPayload = rec.ActionPayload,
+            ActionSummary = rec.ActionSummary,
             Score = rec.Score,
             ExpiresAt = rec.ExpiresAt,
             RespondedAt = rec.RespondedAt,
@@ -45,6 +46,7 @@ public static class RecommendationMappings
             ActionKind = rec.ActionKind.ToString(),
             Title = rec.Title,
             Rationale = rec.Rationale,
+            ActionSummary = rec.ActionSummary,
             Score = rec.Score,
             ExpiresAt = rec.ExpiresAt,
             CreatedAt = rec.CreatedAt
@@ -63,24 +65,6 @@ public static class RecommendationMappings
             ModelVersion = trace.ModelVersion,
             RawLlmResponse = trace.RawLlmResponse,
             SelectionMethod = trace.SelectionMethod
-        };
-    }
-
-    public static DiagnosticSignalDto ToDto(this DiagnosticSignal signal)
-    {
-        return new DiagnosticSignalDto
-        {
-            Id = signal.Id,
-            Type = signal.Type.ToString(),
-            Title = signal.Title,
-            Description = signal.Description,
-            Severity = signal.Severity,
-            EvidenceMetric = signal.Evidence.Metric,
-            EvidenceCurrentValue = signal.Evidence.CurrentValue,
-            EvidenceThresholdValue = signal.Evidence.ThresholdValue,
-            EvidenceDetail = signal.Evidence.Detail,
-            DetectedOn = signal.DetectedOn,
-            IsActive = signal.IsActive
         };
     }
 }

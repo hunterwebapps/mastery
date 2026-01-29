@@ -38,6 +38,7 @@ public sealed class Milestone : AuditableEntity
     /// <summary>
     /// Display order for sorting milestones.
     /// </summary>
+    [EmbeddingIgnore]
     public int DisplayOrder { get; private set; }
 
     /// <summary>

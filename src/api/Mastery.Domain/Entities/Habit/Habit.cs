@@ -10,13 +10,8 @@ namespace Mastery.Domain.Entities.Habit;
 /// Represents a habit in the Mastery system.
 /// Habits are the primary "sensors" for lead metrics - they generate observations when completed.
 /// </summary>
-public sealed class Habit : AuditableEntity, IAggregateRoot
+public sealed class Habit : OwnedEntity, IAggregateRoot
 {
-    /// <summary>
-    /// The user who owns this habit.
-    /// </summary>
-    public string UserId { get; private set; } = null!;
-
     /// <summary>
     /// The title of the habit.
     /// </summary>
@@ -40,6 +35,7 @@ public sealed class Habit : AuditableEntity, IAggregateRoot
     /// <summary>
     /// Display order for sorting in lists.
     /// </summary>
+    [EmbeddingIgnore]
     public int DisplayOrder { get; private set; }
 
     /// <summary>
@@ -96,11 +92,13 @@ public sealed class Habit : AuditableEntity, IAggregateRoot
     /// <summary>
     /// Current streak count (computed, for projections).
     /// </summary>
+    [EmbeddingIgnore]
     public int CurrentStreak { get; private set; }
 
     /// <summary>
     /// 7-day adherence rate (computed, for projections).
     /// </summary>
+    [EmbeddingIgnore]
     public decimal AdherenceRate7Day { get; private set; }
 
     private Habit() { } // EF Core

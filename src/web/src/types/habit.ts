@@ -293,7 +293,7 @@ export const scheduleTypeInfo: Record<ScheduleType, {
   Interval: { label: 'Every N Days', description: 'Repeat at regular intervals' },
 }
 
-export const contributionTypeInfo: Record<HabitContributionType, {
+export const habitContributionTypeInfo: Record<HabitContributionType, {
   label: string
   description: string
 }> = {

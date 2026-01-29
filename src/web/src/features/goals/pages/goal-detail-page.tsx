@@ -1,10 +1,10 @@
-import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useGoal, useUpdateGoalStatus, useUpdateGoalScoreboard, useDeleteGoal, useMetrics, useCreateMetricDefinition } from '../hooks'
 import { AddMetricDialog, GoalHeader, GoalScoreboard } from '../components/goal-detail'
 import type { MetricConfiguration } from '../components/goal-detail/add-metric-dialog'
-import type { GoalStatus, GoalMetricDto, UpdateGoalMetricRequest } from '@/types'
+import type { GoalStatus, GoalMetricDto, UpdateGoalMetricRequest, MetricKind } from '@/types'
 import type { CreateMetricDefinitionFormData } from '../schemas'
 
 function GoalDetailSkeleton() {
@@ -55,6 +55,7 @@ function mapMetricToRequest(metric: GoalMetricDto): UpdateGoalMetricRequest {
 
 export function Component() {
   const { id } = useParams<{ id: string }>()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { data: goal, isLoading } = useGoal(id!)
   const updateStatus = useUpdateGoalStatus()
   const updateScoreboard = useUpdateGoalScoreboard()
@@ -63,6 +64,28 @@ export function Component() {
   const createMetric = useCreateMetricDefinition()
 
   const [showAddMetricDialog, setShowAddMetricDialog] = useState(false)
+  const [preselectedMetricKind, setPreselectedMetricKind] = useState<MetricKind | null>(null)
+
+  // Handle action query params from recommendation acceptance
+  useEffect(() => {
+    const action = searchParams.get('action')
+
+    if (action === 'add-metric') {
+      const kinds = searchParams.get('kinds')
+      // Clear params to prevent re-triggering
+      setSearchParams({}, { replace: true })
+
+      // Preselect first missing kind
+      if (kinds) {
+        const firstKind = kinds.split(',')[0] as MetricKind
+        if (['Lag', 'Lead', 'Constraint'].includes(firstKind)) {
+          setPreselectedMetricKind(firstKind)
+        }
+      }
+
+      setShowAddMetricDialog(true)
+    }
+  }, [searchParams, setSearchParams])
 
   if (isLoading || !goal) {
     return <GoalDetailSkeleton />
@@ -188,12 +211,16 @@ export function Component() {
 
       <AddMetricDialog
         open={showAddMetricDialog}
-        onOpenChange={setShowAddMetricDialog}
+        onOpenChange={(open) => {
+          setShowAddMetricDialog(open)
+          if (!open) setPreselectedMetricKind(null)
+        }}
         availableDefinitions={availableDefinitions}
         onAddMetric={handleAddMetricWithConfig}
         onCreateAndAddMetric={handleCreateAndAddMetric}
         isAdding={updateScoreboard.isPending}
         isCreating={createMetric.isPending}
+        preselectedKind={preselectedMetricKind}
       />
     </div>
   )

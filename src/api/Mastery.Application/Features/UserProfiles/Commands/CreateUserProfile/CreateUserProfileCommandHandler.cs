@@ -28,7 +28,8 @@ public sealed class CreateUserProfileCommandHandler : ICommandHandler<CreateUser
 
     public async Task<Guid> Handle(CreateUserProfileCommand request, CancellationToken cancellationToken)
     {
-        var userId = _currentUserService.UserId
+        // Use explicit UserId if provided (e.g., during registration), otherwise use current user
+        var userId = request.UserId ?? _currentUserService.UserId
             ?? throw new DomainException("User not authenticated.");
 
         // Check if profile already exists

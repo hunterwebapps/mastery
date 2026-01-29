@@ -10,13 +10,8 @@ namespace Mastery.Domain.Entities.Goal;
 /// Represents a goal in the Mastery system.
 /// A goal is the "setpoint" in the control loop - what the user is trying to achieve.
 /// </summary>
-public sealed class Goal : AuditableEntity, IAggregateRoot
+public sealed class Goal : OwnedEntity, IAggregateRoot
 {
-    /// <summary>
-    /// The user who owns this goal.
-    /// </summary>
-    public string UserId { get; private set; } = null!;
-
     /// <summary>
     /// The title of the goal.
     /// </summary>
@@ -84,6 +79,7 @@ public sealed class Goal : AuditableEntity, IAggregateRoot
     /// <summary>
     /// When the goal was completed (if applicable).
     /// </summary>
+    [EmbeddingIgnore]
     public DateTime? CompletedAt { get; private set; }
 
     private Goal() { } // EF Core
@@ -323,7 +319,14 @@ public sealed class Goal : AuditableEntity, IAggregateRoot
 
     public void UpdateMetrics(IEnumerable<GoalMetric> metrics)
     {
-        _metrics = metrics.ToList();
+        // Clear and repopulate the SAME list to preserve EF Core's change tracking.
+        // If we replace the list reference (_metrics = newList), EF Core loses track
+        // of what was removed vs added, causing concurrency errors.
+        _metrics.Clear();
+        foreach (var metric in metrics)
+        {
+            _metrics.Add(metric);
+        }
         AddDomainEvent(new GoalScoreboardUpdatedEvent(Id, "ScoreboardReplaced", null));
     }
 

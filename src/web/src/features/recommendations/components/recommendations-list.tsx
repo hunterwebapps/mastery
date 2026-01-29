@@ -6,7 +6,7 @@ import type { RecommendationSummaryDto } from '@/types'
 interface RecommendationsListProps {
   recommendations: RecommendationSummaryDto[]
   isLoading?: boolean
-  onAccept: (id: string) => void
+  onAccept: (recommendation: RecommendationSummaryDto) => void
   onDismiss: (id: string) => void
   onSnooze: (id: string) => void
 }

@@ -42,7 +42,16 @@ public class BaseRepository<T> : IRepository<T> where T : BaseEntity, IAggregate
 
     public virtual Task UpdateAsync(T entity, CancellationToken cancellationToken = default)
     {
-        Context.Entry(entity).State = EntityState.Modified;
+        // If the entity is already tracked, let EF Core's change tracker detect changes naturally.
+        // Only explicitly attach and mark as Modified if the entity is detached.
+        // This allows proper handling of child collection changes (adds/deletes).
+        var entry = Context.Entry(entity);
+        if (entry.State == EntityState.Detached)
+        {
+            DbSet.Attach(entity);
+            entry.State = EntityState.Modified;
+        }
+        // If already tracked (Unchanged, Modified, etc.), EF Core will detect changes automatically
         return Task.CompletedTask;
     }
 
