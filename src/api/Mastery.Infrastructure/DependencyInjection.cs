@@ -66,6 +66,7 @@ public static class DependencyInjection
         services.AddScoped<ISignalQueue, SignalQueueRepository>();
         services.AddScoped<ISignalProcessingHistoryRepository, SignalProcessingHistoryRepository>();
         services.AddScoped<ISignalClassifier, SignalClassifier>();
+        services.AddScoped<IUserScheduleResolver, UserScheduleResolver>();
 
         services.AddSingleton<IDateTimeProvider, DateTimeProvider>();
 

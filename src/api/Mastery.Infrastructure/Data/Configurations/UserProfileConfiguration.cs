@@ -183,6 +183,33 @@ public class UserProfileConfiguration : IEntityTypeConfiguration<UserProfile>
                     .HasColumnName("AllowAnonymousAnalytics")
                     .HasDefaultValue(true);
             });
+
+            // ProcessingWindows as nested owned type
+            prefs.OwnsOne(p => p.ProcessingWindows, pw =>
+            {
+                pw.Property(x => x.MorningWindowStart)
+                    .HasColumnName("MorningWindowStart");
+
+                pw.Property(x => x.MorningWindowEnd)
+                    .HasColumnName("MorningWindowEnd");
+
+                pw.Property(x => x.EveningWindowStart)
+                    .HasColumnName("EveningWindowStart");
+
+                pw.Property(x => x.EveningWindowEnd)
+                    .HasColumnName("EveningWindowEnd");
+
+                pw.Property(x => x.WeeklyReviewDay)
+                    .HasColumnName("WeeklyReviewDay")
+                    .HasConversion<string>()
+                    .HasMaxLength(10);
+
+                pw.Property(x => x.WeeklyReviewStart)
+                    .HasColumnName("WeeklyReviewStart");
+
+                pw.Property(x => x.WeeklyReviewEnd)
+                    .HasColumnName("WeeklyReviewEnd");
+            });
         });
 
         // Constraints as owned entity

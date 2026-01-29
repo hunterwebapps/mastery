@@ -41,6 +41,11 @@ public sealed class Preferences
     /// Privacy-related settings.
     /// </summary>
     public PrivacySettings Privacy { get; set; } = new();
+
+    /// <summary>
+    /// Processing window preferences for signal/recommendation timing.
+    /// </summary>
+    public ProcessingWindowPreferences ProcessingWindows { get; set; } = new();
 }
 
 public enum CoachingStyle
@@ -144,4 +149,53 @@ public sealed class PrivacySettings
     /// Whether to allow anonymous usage analytics.
     /// </summary>
     public bool AllowAnonymousAnalytics { get; set; } = true;
+}
+
+/// <summary>
+/// Preferences for signal processing windows.
+/// These control when the system processes signals and generates recommendations.
+/// </summary>
+public sealed class ProcessingWindowPreferences
+{
+    /// <summary>
+    /// Start time for the morning processing window (local time).
+    /// Defaults to 6:00 AM.
+    /// </summary>
+    public TimeOnly MorningWindowStart { get; set; } = new(6, 0);
+
+    /// <summary>
+    /// End time for the morning processing window (local time).
+    /// Defaults to 9:00 AM.
+    /// </summary>
+    public TimeOnly MorningWindowEnd { get; set; } = new(9, 0);
+
+    /// <summary>
+    /// Start time for the evening processing window (local time).
+    /// Defaults to 8:00 PM.
+    /// </summary>
+    public TimeOnly EveningWindowStart { get; set; } = new(20, 0);
+
+    /// <summary>
+    /// End time for the evening processing window (local time).
+    /// Defaults to 10:00 PM.
+    /// </summary>
+    public TimeOnly EveningWindowEnd { get; set; } = new(22, 0);
+
+    /// <summary>
+    /// Day of the week for the weekly review window.
+    /// Defaults to Sunday.
+    /// </summary>
+    public DayOfWeek WeeklyReviewDay { get; set; } = DayOfWeek.Sunday;
+
+    /// <summary>
+    /// Start time for the weekly review window (local time).
+    /// Defaults to 5:00 PM.
+    /// </summary>
+    public TimeOnly WeeklyReviewStart { get; set; } = new(17, 0);
+
+    /// <summary>
+    /// End time for the weekly review window (local time).
+    /// Defaults to 8:00 PM.
+    /// </summary>
+    public TimeOnly WeeklyReviewEnd { get; set; } = new(20, 0);
 }
