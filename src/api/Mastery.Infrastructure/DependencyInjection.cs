@@ -62,6 +62,11 @@ public static class DependencyInjection
         services.AddScoped<IRecommendationRunHistoryRepository, RecommendationRunHistoryRepository>();
         services.AddScoped<Outbox.IOutboxRepository, OutboxRepository>();
 
+        // Signal queue services
+        services.AddScoped<ISignalQueue, SignalQueueRepository>();
+        services.AddScoped<ISignalProcessingHistoryRepository, SignalProcessingHistoryRepository>();
+        services.AddScoped<ISignalClassifier, SignalClassifier>();
+
         services.AddSingleton<IDateTimeProvider, DateTimeProvider>();
 
         // Outbox processing services

@@ -10,6 +10,7 @@ using Mastery.Domain.Entities.Task;
 using Mastery.Domain.Entities.CheckIn;
 using Mastery.Domain.Entities.Experiment;
 using Mastery.Domain.Entities.Recommendation;
+using Mastery.Domain.Entities.Signal;
 using Mastery.Domain.Entities.UserProfile;
 using Mastery.Domain.Interfaces;
 using Mastery.Infrastructure.Identity;
@@ -48,6 +49,8 @@ public class MasteryDbContext : IdentityDbContext<ApplicationUser>, IMasteryDbCo
     public DbSet<RecommendationRunHistory> RecommendationRunHistory => Set<RecommendationRunHistory>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<OutboxEntry> OutboxEntries => Set<OutboxEntry>();
+    public DbSet<SignalEntry> SignalEntries => Set<SignalEntry>();
+    public DbSet<SignalProcessingHistory> SignalProcessingHistory => Set<SignalProcessingHistory>();
 
     public MasteryDbContext(
         DbContextOptions<MasteryDbContext> options,
