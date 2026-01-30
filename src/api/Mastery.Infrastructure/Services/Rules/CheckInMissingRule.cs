@@ -30,9 +30,8 @@ public sealed class CheckInMissingRule : DeterministicRuleBase
         var hasMorning = todayCheckIns.Any(c => c.Type == CheckInType.Morning);
         var hasEvening = todayCheckIns.Any(c => c.Type == CheckInType.Evening);
 
-        // Check if there's a "CheckInReminderDue" signal
+        // Check for window start signals (explicit morning/evening only)
         var reminderSignal = signals.FirstOrDefault(s =>
-            s.EventType == "CheckInReminderDue" ||
             s.EventType == "MorningWindowStart" ||
             s.EventType == "EveningWindowStart");
 
@@ -48,12 +47,12 @@ public sealed class CheckInMissingRule : DeterministicRuleBase
         if (!isMissing)
             return Task.FromResult(NotTriggered());
 
-        // Calculate severity based on streak
+        // Calculate severity based on streak (protect longer streaks more aggressively)
         var severity = state.CheckInStreak switch
         {
-            >= 14 => RuleSeverity.High, // Long streak at risk
+            >= 30 => RuleSeverity.Critical, // Protect 30+ day streaks
+            >= 14 => RuleSeverity.High,     // Long streak at risk
             >= 7 => RuleSeverity.Medium,
-            >= 3 => RuleSeverity.Low,
             _ => RuleSeverity.Low
         };
 
@@ -65,7 +64,8 @@ public sealed class CheckInMissingRule : DeterministicRuleBase
             ["CurrentStreak"] = state.CheckInStreak,
             ["HasMorningCheckIn"] = hasMorning,
             ["HasEveningCheckIn"] = hasEvening,
-            ["SignalType"] = reminderSignal.EventType
+            ["SignalType"] = reminderSignal.EventType,
+            ["SignalScheduledAt"] = reminderSignal.ScheduledWindowStart?.ToString("o") ?? "N/A"
         };
 
         var directRecommendation = new DirectRecommendationCandidate(
@@ -83,7 +83,7 @@ public sealed class CheckInMissingRule : DeterministicRuleBase
             Rationale: state.CheckInStreak > 0
                 ? $"You've checked in consistently for {state.CheckInStreak} days. A quick {checkInTypeName} check-in keeps your streak alive and helps you stay on track."
                 : $"A brief {checkInTypeName} check-in helps you set intentions and track progress. It only takes a minute.",
-            Score: state.CheckInStreak > 7 ? 0.8m : 0.6m,
+            Score: Math.Min(0.50m + (state.CheckInStreak * 0.015m), 0.90m), // Linear scaling: 0 days → 0.50, 7 days → 0.61, 14 days → 0.71, 30 days → 0.90
             ActionSummary: $"Complete {checkInTypeName} check-in");
 
         return Task.FromResult(Triggered(severity, evidence, directRecommendation));

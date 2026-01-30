@@ -1,14 +1,55 @@
+using System.Collections.Frozen;
+using System.Reflection;
 using Mastery.Application.Common.Interfaces;
+using Mastery.Domain.Common;
+using Mastery.Domain.Entities.CheckIn;
+using Mastery.Domain.Entities.Habit;
+using Mastery.Domain.Entities.Task;
 using Mastery.Domain.Enums;
-using Mastery.Domain.Events;
 
 namespace Mastery.Infrastructure.Services;
 
 /// <summary>
 /// Classifies domain events into signals with appropriate priority and processing windows.
+/// Uses reflection at startup to read SignalClassificationAttribute from domain events.
 /// </summary>
 public sealed class SignalClassifier : ISignalClassifier
 {
+    private readonly FrozenDictionary<string, SignalMetadata> _classifications;
+    private readonly FrozenSet<string> _noSignalEvents;
+
+    public SignalClassifier()
+    {
+        var classifications = new Dictionary<string, SignalMetadata>();
+        var noSignalEvents = new HashSet<string>();
+
+        // Scan all domain event types from the Domain assembly
+        var domainAssembly = typeof(IDomainEvent).Assembly;
+
+        foreach (var type in domainAssembly.GetTypes())
+        {
+            // Skip non-class types, abstract types, and types that don't inherit from DomainEvent
+            if (!type.IsClass || type.IsAbstract || !type.IsAssignableTo(typeof(IDomainEvent)))
+                continue;
+
+            var signalAttr = type.GetCustomAttribute<SignalClassificationAttribute>();
+            var noSignalAttr = type.GetCustomAttribute<NoSignalAttribute>();
+
+            if (signalAttr != null)
+            {
+                classifications[type.Name] = new SignalMetadata(signalAttr.Priority, signalAttr.WindowType);
+            }
+            else if (noSignalAttr != null)
+            {
+                noSignalEvents.Add(type.Name);
+            }
+            // Events without either attribute will be logged by SignalCoverageValidator
+        }
+
+        _classifications = classifications.ToFrozenDictionary();
+        _noSignalEvents = noSignalEvents.ToFrozenSet();
+    }
+
     /// <inheritdoc />
     public bool ShouldEscalateToUrgent(IReadOnlyList<SignalClassification> pendingSignals, object? state)
     {
@@ -45,54 +86,28 @@ public sealed class SignalClassifier : ISignalClassifier
         if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(domainEventType))
             return null;
 
-        // Map domain event type name to priority and window
-        // Note: P0 (Urgent) signals are detected at processing time by Tier 0 rules,
-        // not at classification time from outbox entries
-        return domainEventType switch
+        // Events explicitly marked as NoSignal should not generate signals
+        if (_noSignalEvents.Contains(domainEventType))
+            return null;
+
+        // Look up classification from attribute metadata
+        if (_classifications.TryGetValue(domainEventType, out var metadata))
         {
-            // P1 (Window-Aligned) - Check-ins
-            nameof(MorningCheckInSubmittedEvent) => new SignalClassification(
-                SignalPriority.WindowAligned, ProcessingWindowType.MorningWindow,
-                domainEventType, entityType, entityId),
-            nameof(EveningCheckInSubmittedEvent) => new SignalClassification(
-                SignalPriority.WindowAligned, ProcessingWindowType.EveningWindow,
-                domainEventType, entityType, entityId),
-            nameof(CheckInSkippedEvent) => new SignalClassification(
-                SignalPriority.WindowAligned, ProcessingWindowType.BatchWindow,
-                domainEventType, entityType, entityId),
+            return new SignalClassification(
+                metadata.Priority,
+                metadata.WindowType,
+                domainEventType,
+                entityType,
+                entityId);
+        }
 
-            // P2 (Standard) - Behavioral signals
-            nameof(HabitCompletedEvent) or nameof(HabitMissedEvent) or nameof(HabitSkippedEvent) =>
-                new SignalClassification(SignalPriority.Standard, ProcessingWindowType.BatchWindow,
-                    domainEventType, entityType, entityId),
-            nameof(TaskCompletedEvent) or nameof(TaskRescheduledEvent) =>
-                new SignalClassification(SignalPriority.Standard, ProcessingWindowType.BatchWindow,
-                    domainEventType, entityType, entityId),
-            nameof(MetricObservationRecordedEvent) =>
-                new SignalClassification(SignalPriority.Standard, ProcessingWindowType.BatchWindow,
-                    domainEventType, entityType, entityId),
-            nameof(ExperimentStartedEvent) or nameof(ExperimentCompletedEvent) =>
-                new SignalClassification(SignalPriority.Standard, ProcessingWindowType.BatchWindow,
-                    domainEventType, entityType, entityId),
-            nameof(GoalStatusChangedEvent) or nameof(ProjectStatusChangedEvent) =>
-                new SignalClassification(SignalPriority.Standard, ProcessingWindowType.BatchWindow,
-                    domainEventType, entityType, entityId),
-            nameof(HabitStreakMilestoneEvent) =>
-                new SignalClassification(SignalPriority.Standard, ProcessingWindowType.BatchWindow,
-                    domainEventType, entityType, entityId),
-
-            // P3 (Low) - Metadata changes
-            nameof(GoalCreatedEvent) or nameof(GoalUpdatedEvent) or
-            nameof(HabitCreatedEvent) or nameof(HabitUpdatedEvent) or nameof(HabitStatusChangedEvent) or nameof(HabitArchivedEvent) or
-            nameof(TaskCreatedEvent) or nameof(TaskUpdatedEvent) or nameof(TaskArchivedEvent) or
-            nameof(ProjectCreatedEvent) or nameof(ProjectUpdatedEvent) or
-            nameof(ExperimentCreatedEvent) or
-            nameof(UserProfileUpdatedEvent) or nameof(SeasonCreatedEvent) or nameof(CheckInUpdatedEvent) =>
-                new SignalClassification(SignalPriority.Low, ProcessingWindowType.BatchWindow,
-                    domainEventType, entityType, entityId),
-
-            // Skip events that don't need signals
-            _ => null
-        };
+        // Unknown events return null (no signal)
+        // SignalCoverageValidator will log warnings for these
+        return null;
     }
+
+    /// <summary>
+    /// Internal record for caching signal metadata from attributes.
+    /// </summary>
+    private sealed record SignalMetadata(SignalPriority Priority, ProcessingWindowType WindowType);
 }

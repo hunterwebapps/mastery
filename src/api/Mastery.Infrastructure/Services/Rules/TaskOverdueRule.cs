@@ -13,6 +13,9 @@ public sealed class TaskOverdueRule : DeterministicRuleBase
 {
     private const int RescheduleWarningThreshold = 2;
     private const int OverdueDaysCritical = 7;
+    private const int RescheduleAbandonmentThreshold = 4;
+    private const int OverdueCountCriticalThreshold = 5;
+    private const int DefaultTaskEstimateMinutes = 30;
 
     public override string RuleId => "TASK_OVERDUE";
     public override string RuleName => "Overdue Task Detection";
@@ -43,13 +46,15 @@ public sealed class TaskOverdueRule : DeterministicRuleBase
 
         var mostOverdue = overdueTasks.First();
 
-        // Determine severity based on days overdue and reschedule history
-        var severity = (mostOverdue.DaysOverdue, mostOverdue.Task.RescheduleCount) switch
+        // Determine severity based on days overdue, reschedule history, and count
+        var severity = (mostOverdue.DaysOverdue, mostOverdue.Task.RescheduleCount, overdueTasks.Count) switch
         {
-            ( >= OverdueDaysCritical, >= RescheduleWarningThreshold) => RuleSeverity.Critical,
-            ( >= OverdueDaysCritical, _) => RuleSeverity.High,
-            (_, >= RescheduleWarningThreshold) => RuleSeverity.High,
-            ( >= 3, _) => RuleSeverity.Medium,
+            (_, _, >= OverdueCountCriticalThreshold) => RuleSeverity.Critical,
+            ( >= OverdueDaysCritical, >= RescheduleWarningThreshold, _) => RuleSeverity.Critical,
+            ( >= OverdueDaysCritical, _, _) => RuleSeverity.High,
+            (_, >= RescheduleWarningThreshold, _) => RuleSeverity.High,
+            (_, _, >= 3) => RuleSeverity.Medium,
+            ( >= 3, _, _) => RuleSeverity.Medium,
             _ => RuleSeverity.Low
         };
 
@@ -61,7 +66,7 @@ public sealed class TaskOverdueRule : DeterministicRuleBase
             ["DaysOverdue"] = mostOverdue.DaysOverdue,
             ["RescheduleCount"] = mostOverdue.Task.RescheduleCount,
             ["OriginalDueDate"] = mostOverdue.Task.DueDate!.Value.ToString("yyyy-MM-dd"),
-            ["TotalOverdueMinutes"] = overdueTasks.Sum(t => t.Task.EstMinutes ?? 30),
+            ["TotalOverdueMinutes"] = overdueTasks.Sum(t => t.Task.EstMinutes ?? DefaultTaskEstimateMinutes),
             ["AllOverdueTasks"] = overdueTasks.Select(t => new
             {
                 t.Task.Id,
@@ -71,14 +76,39 @@ public sealed class TaskOverdueRule : DeterministicRuleBase
             }).ToList()
         };
 
+        // Check if we should generate a batch triage recommendation
+        if (overdueTasks.Count >= OverdueCountCriticalThreshold)
+        {
+            var triageRecommendation = new DirectRecommendationCandidate(
+                Type: RecommendationType.TaskTriageSuggestion,
+                Context: RecommendationContext.DriftAlert,
+                TargetKind: RecommendationTargetKind.TaskList,
+                TargetEntityId: null,
+                TargetEntityTitle: $"{overdueTasks.Count} overdue tasks",
+                ActionKind: RecommendationActionKind.Review,
+                Title: $"Triage {overdueTasks.Count} overdue tasks",
+                Rationale: $"You have {overdueTasks.Count} overdue tasks totaling ~{overdueTasks.Sum(t => t.Task.EstMinutes ?? DefaultTaskEstimateMinutes)} minutes. This backlog needs attention—consider a dedicated triage session to archive, delegate, reschedule, or commit to each task.",
+                Score: 0.9m,
+                ActionSummary: "Review and triage overdue backlog");
+
+            // Escalate to Tier 2 for LLM-guided triage when many tasks are overdue
+            return Task.FromResult(Triggered(severity, evidence, triageRecommendation, requiresEscalation: true));
+        }
+
         // Decide recommendation type based on history
-        var shouldSuggestArchive = mostOverdue.Task.RescheduleCount >= RescheduleWarningThreshold
-                                   && mostOverdue.DaysOverdue >= OverdueDaysCritical;
+        // Archive if: (chronic rescheduler AND critically overdue) OR abandoned (rescheduled too many times)
+        var shouldSuggestArchive =
+            (mostOverdue.Task.RescheduleCount >= RescheduleWarningThreshold && mostOverdue.DaysOverdue >= OverdueDaysCritical)
+            || mostOverdue.Task.RescheduleCount >= RescheduleAbandonmentThreshold;
 
         DirectRecommendationCandidate directRecommendation;
 
         if (shouldSuggestArchive)
         {
+            var archiveRationale = mostOverdue.Task.RescheduleCount >= RescheduleAbandonmentThreshold
+                ? $"This task has been rescheduled {mostOverdue.Task.RescheduleCount} times, suggesting it may no longer be a priority. Archive it to clear mental clutter, or if it's truly important, block time now and commit."
+                : $"This task is {mostOverdue.DaysOverdue} days overdue and has been rescheduled {mostOverdue.Task.RescheduleCount} times. If it's no longer relevant, archiving it will clear mental clutter. If it is important, consider why it keeps slipping.";
+
             directRecommendation = new DirectRecommendationCandidate(
                 Type: RecommendationType.TaskArchiveSuggestion,
                 Context: RecommendationContext.DriftAlert,
@@ -87,12 +117,16 @@ public sealed class TaskOverdueRule : DeterministicRuleBase
                 TargetEntityTitle: mostOverdue.Task.Title,
                 ActionKind: RecommendationActionKind.Remove,
                 Title: $"Consider archiving \"{mostOverdue.Task.Title}\"",
-                Rationale: $"This task is {mostOverdue.DaysOverdue} days overdue and has been rescheduled {mostOverdue.Task.RescheduleCount} times. If it's no longer relevant, archiving it will clear mental clutter. If it is important, consider why it keeps slipping.",
-                Score: 0.7m,
+                Rationale: archiveRationale,
+                Score: 0.8m,
                 ActionSummary: "Archive or recommit to task");
         }
         else
         {
+            var rescheduleRationale = mostOverdue.Task.RescheduleCount > 0
+                ? $"This task has been rescheduled {mostOverdue.Task.RescheduleCount} time(s). Consider breaking it down or addressing what's blocking progress."
+                : "Set a new due date or schedule time today to complete this task.";
+
             directRecommendation = new DirectRecommendationCandidate(
                 Type: RecommendationType.ScheduleAdjustmentSuggestion,
                 Context: RecommendationContext.DriftAlert,
@@ -101,9 +135,7 @@ public sealed class TaskOverdueRule : DeterministicRuleBase
                 TargetEntityTitle: mostOverdue.Task.Title,
                 ActionKind: RecommendationActionKind.Update,
                 Title: $"\"{mostOverdue.Task.Title}\" is {mostOverdue.DaysOverdue} days overdue",
-                Rationale: mostOverdue.Task.RescheduleCount > 0
-                    ? $"This task has been rescheduled {mostOverdue.Task.RescheduleCount} time(s). Consider breaking it down or addressing what's blocking progress."
-                    : "Set a new due date or schedule time today to complete this task.",
+                Rationale: rescheduleRationale,
                 Score: 0.75m,
                 ActionSummary: "Reschedule or break down task");
         }

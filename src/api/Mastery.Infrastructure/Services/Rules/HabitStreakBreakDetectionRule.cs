@@ -22,25 +22,32 @@ public sealed class HabitStreakBreakDetectionRule : DeterministicRuleBase
         IReadOnlyList<SignalEntry> signals,
         CancellationToken ct = default)
     {
-        var atRiskHabits = new List<(Guid Id, string Title, int CurrentStreak, bool IsScheduledToday)>();
+        // Pre-compute completion signals by habit for O(1) lookup
+        var completionsByHabit = signals
+            .Where(s => s.EventType == "HabitCompleted" && s.TargetEntityId.HasValue)
+            .GroupBy(s => s.TargetEntityId!.Value)
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderByDescending(s => s.CreatedAt).ToList());
+
+        var atRiskHabits = new List<(Guid Id, string Title, int CurrentStreak)>();
 
         foreach (var habit in state.Habits.Where(h =>
             h.Status == HabitStatus.Active &&
             h.CurrentStreak > 0))
         {
-            var isScheduledToday = IsHabitScheduledToday(habit, state.Today);
+            completionsByHabit.TryGetValue(habit.Id, out var habitCompletions);
+            var isScheduledToday = IsHabitScheduledToday(habit, state.Today, habitCompletions);
 
             if (isScheduledToday)
             {
-                // Check if there's evidence it's been completed today
-                // by looking for relevant signals
-                var hasCompletedSignal = signals.Any(s =>
-                    s.EventType == "HabitCompleted" &&
-                    s.TargetEntityId == habit.Id);
+                // Check if completed today by looking at the most recent completion
+                var completedToday = habitCompletions?.Any(s =>
+                    DateOnly.FromDateTime(s.CreatedAt) == state.Today) ?? false;
 
-                if (!hasCompletedSignal)
+                if (!completedToday)
                 {
-                    atRiskHabits.Add((habit.Id, habit.Title, habit.CurrentStreak, isScheduledToday));
+                    atRiskHabits.Add((habit.Id, habit.Title, habit.CurrentStreak));
                 }
             }
         }
@@ -65,7 +72,7 @@ public sealed class HabitStreakBreakDetectionRule : DeterministicRuleBase
             ["HighestStreakAtRisk"] = mostValuable.CurrentStreak,
             ["MostValuableHabitId"] = mostValuable.Id,
             ["MostValuableHabitTitle"] = mostValuable.Title,
-            ["AllAtRiskHabits"] = atRiskHabits.Select(h => new { h.Id, h.Title, h.CurrentStreak }).ToList()
+            ["AllAtRiskHabits"] = atRiskHabits
         };
 
         var directRecommendation = new DirectRecommendationCandidate(
@@ -83,21 +90,43 @@ public sealed class HabitStreakBreakDetectionRule : DeterministicRuleBase
         return Task.FromResult(Triggered(severity, evidence, directRecommendation));
     }
 
-    private static bool IsHabitScheduledToday(HabitSnapshot habit, DateOnly today)
+    private static bool IsHabitScheduledToday(
+        HabitSnapshot habit,
+        DateOnly today,
+        IReadOnlyList<SignalEntry>? completions)
     {
         if (habit.Schedule == null)
             return true; // Default to daily if no schedule
 
-        return habit.Schedule.Type.ToLowerInvariant() switch
-        {
-            "daily" => true,
-            "weekly" when habit.Schedule.DaysOfWeek != null =>
-                habit.Schedule.DaysOfWeek.Contains((int)today.DayOfWeek),
-            "interval" when habit.Schedule.IntervalDays.HasValue =>
-                // Would need last completion date to calculate properly
-                // For now, assume scheduled
-                true,
-            _ => true
-        };
+        var scheduleType = habit.Schedule.Type;
+
+        if (scheduleType.Equals("daily", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (scheduleType.Equals("weekly", StringComparison.OrdinalIgnoreCase))
+            return habit.Schedule.DaysOfWeek?.Contains((int)today.DayOfWeek) ?? true;
+
+        if (scheduleType.Equals("interval", StringComparison.OrdinalIgnoreCase))
+            return IsIntervalScheduledToday(habit.Schedule.IntervalDays, today, completions);
+
+        return true; // Unknown schedule type, assume scheduled
+    }
+
+    private static bool IsIntervalScheduledToday(
+        int? intervalDays,
+        DateOnly today,
+        IReadOnlyList<SignalEntry>? completions)
+    {
+        if (!intervalDays.HasValue || intervalDays.Value <= 0)
+            return true; // Invalid interval, assume scheduled
+
+        if (completions == null || completions.Count == 0)
+            return true; // No completion history, assume scheduled (conservative)
+
+        // Find the most recent completion date
+        var lastCompletionDate = DateOnly.FromDateTime(completions[0].CreatedAt);
+
+        var daysSinceCompletion = today.DayNumber - lastCompletionDate.DayNumber;
+        return daysSinceCompletion >= intervalDays.Value;
     }
 }

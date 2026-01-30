@@ -1,7 +1,11 @@
 using Mastery.Application.Common.Models;
 using Mastery.Domain.Entities.Signal;
 using Mastery.Domain.Enums;
-using Mastery.Domain.Events;
+using ProjectCreatedEvent = Mastery.Domain.Entities.Project.ProjectCreatedEvent;
+using ProjectUpdatedEvent = Mastery.Domain.Entities.Project.ProjectUpdatedEvent;
+using TaskCompletedEvent = Mastery.Domain.Entities.Task.TaskCompletedEvent;
+using TaskCreatedEvent = Mastery.Domain.Entities.Task.TaskCreatedEvent;
+using TaskStatusChangedEvent = Mastery.Domain.Entities.Task.TaskStatusChangedEvent;
 using TaskStatus = Mastery.Domain.Enums.TaskStatus;
 
 namespace Mastery.Infrastructure.Services.Rules;

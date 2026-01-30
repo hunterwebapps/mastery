@@ -7,6 +7,7 @@ public enum RecommendationTargetKind
     Habit,
     HabitOccurrence,
     Task,
+    TaskList,
     Project,
     Experiment,
     UserProfile

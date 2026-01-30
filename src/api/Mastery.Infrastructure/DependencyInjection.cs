@@ -66,11 +66,11 @@ public static class DependencyInjection
         // Signal queue services
         services.AddScoped<ISignalEntryRepository, SignalEntryRepository>();
         services.AddScoped<ISignalProcessingHistoryRepository, SignalProcessingHistoryRepository>();
-        services.AddScoped<ISignalClassifier, SignalClassifier>();
+        services.AddSingleton<ISignalClassifier, SignalClassifier>();
         services.AddScoped<IUserScheduleResolver, UserScheduleResolver>();
 
-        // Derived signal detection (P0 urgent signals)
-        services.AddScoped<IDerivedSignalDetector, DerivedSignalDetector>();
+        // Signal coverage validation at startup
+        services.AddHostedService<SignalCoverageValidator>();
 
         // Tier 0 deterministic rules engine
         services.AddScoped<IDeterministicRule, TaskCapacityOverloadRule>();
@@ -82,6 +82,10 @@ public static class DependencyInjection
         services.AddScoped<IDeterministicRule, CheckInNoTop1SelectedRule>();
         services.AddScoped<IDeterministicRule, CheckInMissingRule>();
         services.AddScoped<IDeterministicRule, GoalScoreboardIncompleteRule>();
+        services.AddScoped<IDeterministicRule, GoalProgressAtRiskRule>();
+        services.AddScoped<IDeterministicRule, ProjectStuckRule>();
+        services.AddScoped<IDeterministicRule, MetricObservationOverdueRule>();
+        services.AddScoped<IDeterministicRule, RecurringTaskStalenessRule>();
         services.AddScoped<IDeterministicRule, TaskOverdueRule>();
         services.AddScoped<IDeterministicRulesEngine, DeterministicRulesEngine>();
 

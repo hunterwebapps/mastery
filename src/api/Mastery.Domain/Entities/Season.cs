@@ -1,5 +1,5 @@
 using Mastery.Domain.Common;
-using Mastery.Domain.Events;
+using Mastery.Domain.Entities.UserProfile;
 using Mastery.Domain.Exceptions;
 
 namespace Mastery.Domain.Entities;

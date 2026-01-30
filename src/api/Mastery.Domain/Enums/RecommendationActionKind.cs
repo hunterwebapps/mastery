@@ -7,6 +7,7 @@ public enum RecommendationActionKind
     ExecuteToday,
     Defer,
     Remove,
+    Review,
     ReflectPrompt,
     LearnPrompt
 }

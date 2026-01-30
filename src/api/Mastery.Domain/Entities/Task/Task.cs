@@ -1,6 +1,5 @@
 using Mastery.Domain.Common;
 using Mastery.Domain.Enums;
-using Mastery.Domain.Events;
 using Mastery.Domain.Exceptions;
 using Mastery.Domain.ValueObjects;
 using TaskStatus = Mastery.Domain.Enums.TaskStatus;

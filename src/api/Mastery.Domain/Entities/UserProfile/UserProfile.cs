@@ -1,5 +1,4 @@
 using Mastery.Domain.Common;
-using Mastery.Domain.Events;
 using Mastery.Domain.Exceptions;
 using Mastery.Domain.ValueObjects;
 
@@ -120,8 +119,11 @@ public sealed class UserProfile : OwnedEntity, IAggregateRoot
 
     public void ClearCurrentSeason()
     {
+        var previousSeasonId = CurrentSeasonId;
         CurrentSeasonId = null;
         CurrentSeason = null;
+
+        AddDomainEvent(new SeasonClearedEvent(Id, UserId, previousSeasonId));
     }
 
     public void UpdatePreferences(Preferences preferences)

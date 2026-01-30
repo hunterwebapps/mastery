@@ -1,6 +1,5 @@
 using Mastery.Domain.Common;
 using Mastery.Domain.Enums;
-using Mastery.Domain.Events;
 using Mastery.Domain.Exceptions;
 using Mastery.Domain.ValueObjects;
 
@@ -184,6 +183,8 @@ public sealed class Experiment : OwnedEntity, IAggregateRoot
 
         if (endDatePlanned.HasValue)
             EndDatePlanned = endDatePlanned.Value;
+
+        AddDomainEvent(new ExperimentUpdatedEvent(Id, UserId));
     }
 
     #region Status Transitions
@@ -272,6 +273,8 @@ public sealed class Experiment : OwnedEntity, IAggregateRoot
             throw new DomainException("Only completed or abandoned experiments can be archived.");
 
         Status = ExperimentStatus.Archived;
+
+        AddDomainEvent(new ExperimentArchivedEvent(Id, UserId));
     }
 
     #endregion
@@ -285,6 +288,8 @@ public sealed class Experiment : OwnedEntity, IAggregateRoot
     {
         var note = ExperimentNote.Create(Id, content);
         _notes.Add(note);
+
+        AddDomainEvent(new ExperimentNoteAddedEvent(Id, note.Id, UserId));
         return note;
     }
 

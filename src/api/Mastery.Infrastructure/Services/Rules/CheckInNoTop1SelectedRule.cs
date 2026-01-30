@@ -19,15 +19,16 @@ public sealed class CheckInNoTop1SelectedRule : DeterministicRuleBase
         IReadOnlyList<SignalEntry> signals,
         CancellationToken ct = default)
     {
-        // Find today's morning check-in
+        // Find today's completed morning check-in
         var todayMorningCheckIn = state.RecentCheckIns
             .FirstOrDefault(c => c.Date == state.Today && c.Type == CheckInType.Morning);
 
-        // If no morning check-in yet or it has a Top1, rule doesn't trigger
-        if (todayMorningCheckIn == null)
+        // Rule only evaluates completed check-ins (draft may still be in progress)
+        if (todayMorningCheckIn == null || todayMorningCheckIn.Status != CheckInStatus.Completed)
             return Task.FromResult(NotTriggered());
 
-        if (todayMorningCheckIn.Top1EntityId.HasValue || !string.IsNullOrEmpty(todayMorningCheckIn.Top1Type))
+        // Top1Type is the canonical indicator of selection - if set, user made a selection
+        if (!string.IsNullOrEmpty(todayMorningCheckIn.Top1Type))
             return Task.FromResult(NotTriggered());
 
         // Check if there was a recent check-in submitted signal for context
@@ -39,7 +40,10 @@ public sealed class CheckInNoTop1SelectedRule : DeterministicRuleBase
         {
             ["CheckInId"] = todayMorningCheckIn.Id,
             ["CheckInDate"] = state.Today.ToString("yyyy-MM-dd"),
+            ["CheckInStatus"] = todayMorningCheckIn.Status.ToString(),
             ["EnergyLevel"] = todayMorningCheckIn.EnergyLevel ?? 0,
+            ["Top1Type"] = todayMorningCheckIn.Top1Type ?? "null",
+            ["Top1EntityId"] = todayMorningCheckIn.Top1EntityId?.ToString() ?? "null",
             ["HasRecentSignal"] = checkInSignal != null
         };
 
@@ -60,7 +64,7 @@ public sealed class CheckInNoTop1SelectedRule : DeterministicRuleBase
             ActionKind: RecommendationActionKind.ReflectPrompt,
             Title: "Set your Top 1 priority for today",
             Rationale: "Starting your day with a clear Top 1 priority dramatically increases follow-through. What's the ONE thing that would make today a success?",
-            Score: 0.7m,
+            Score: Math.Min(0.60m + (state.CheckInStreak * 0.02m), 0.85m),
             ActionSummary: "Select your most important task or goal");
 
         return Task.FromResult(Triggered(severity, evidence, directRecommendation));

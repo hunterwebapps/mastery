@@ -13,7 +13,9 @@ public sealed class DeadlineProximityRule : DeterministicRuleBase
 {
     private const int UrgentHours = 24;
     private const int WarningHours = 48;
-    private const decimal MinProgressThreshold = 0.5m; // 50%
+    private const decimal WarningProgressThreshold = 0.5m; // 50% required at 48h
+    private const decimal UrgentProgressThreshold = 0.75m; // 75% required at 24h
+    private const int SeverityItemCountThreshold = 3;
 
     public override string RuleId => "DEADLINE_PROXIMITY";
     public override string RuleName => "Deadline Proximity Alert";
@@ -24,7 +26,7 @@ public sealed class DeadlineProximityRule : DeterministicRuleBase
         IReadOnlyList<SignalEntry> signals,
         CancellationToken ct = default)
     {
-        var urgentItems = new List<(string Type, Guid Id, string Title, int HoursUntil, decimal Progress)>();
+        var urgentItems = new List<(string Type, Guid Id, string Title, int HoursUntil, decimal Progress, bool IsOverdue)>();
 
         // Check tasks with due dates
         foreach (var task in state.Tasks.Where(t =>
@@ -35,10 +37,11 @@ public sealed class DeadlineProximityRule : DeterministicRuleBase
             var dueDate = task.DueDate!.Value;
             var hoursUntil = (dueDate.ToDateTime(TimeOnly.MinValue) - state.Today.ToDateTime(TimeOnly.MinValue)).TotalHours;
 
-            if (hoursUntil <= WarningHours && hoursUntil > 0)
+            // Include overdue items (hoursUntil <= 0) and items within warning window
+            if (hoursUntil <= WarningHours)
             {
                 // Tasks are binary: 0% or 100%
-                urgentItems.Add(("Task", task.Id, task.Title, (int)hoursUntil, 0m));
+                urgentItems.Add(("Task", task.Id, task.Title, (int)hoursUntil, 0m, hoursUntil <= 0));
             }
         }
 
@@ -50,15 +53,22 @@ public sealed class DeadlineProximityRule : DeterministicRuleBase
             var targetEndDate = project.TargetEndDate!.Value;
             var hoursUntil = (targetEndDate.ToDateTime(TimeOnly.MinValue) - state.Today.ToDateTime(TimeOnly.MinValue)).TotalHours;
 
-            if (hoursUntil <= WarningHours && hoursUntil > 0)
+            // Include overdue items and items within warning window
+            if (hoursUntil <= WarningHours)
             {
                 var progress = project.TotalTasks > 0
                     ? (decimal)project.CompletedTasks / project.TotalTasks
                     : 0m;
 
-                if (progress < MinProgressThreshold)
+                // Sliding scale: require more progress as deadline approaches
+                var requiredProgress = hoursUntil <= UrgentHours
+                    ? UrgentProgressThreshold
+                    : WarningProgressThreshold;
+
+                // Overdue items always qualify; otherwise check progress threshold
+                if (hoursUntil <= 0 || progress < requiredProgress)
                 {
-                    urgentItems.Add(("Project", project.Id, project.Title, (int)hoursUntil, progress));
+                    urgentItems.Add(("Project", project.Id, project.Title, (int)hoursUntil, progress, hoursUntil <= 0));
                 }
             }
         }
@@ -72,14 +82,21 @@ public sealed class DeadlineProximityRule : DeterministicRuleBase
             var today = state.Today.ToDateTime(TimeOnly.MinValue);
             var hoursUntil = (deadline - today).TotalHours;
 
-            if (hoursUntil <= WarningHours && hoursUntil > 0)
+            // Include overdue items and items within warning window
+            if (hoursUntil <= WarningHours)
             {
                 // Calculate goal progress from metrics
                 var progress = CalculateGoalProgress(goal);
 
-                if (progress < MinProgressThreshold)
+                // Sliding scale: require more progress as deadline approaches
+                var requiredProgress = hoursUntil <= UrgentHours
+                    ? UrgentProgressThreshold
+                    : WarningProgressThreshold;
+
+                // Overdue items always qualify; otherwise check progress threshold
+                if (hoursUntil <= 0 || progress < requiredProgress)
                 {
-                    urgentItems.Add(("Goal", goal.Id, goal.Title, (int)hoursUntil, progress));
+                    urgentItems.Add(("Goal", goal.Id, goal.Title, (int)hoursUntil, progress, hoursUntil <= 0));
                 }
             }
         }
@@ -88,19 +105,26 @@ public sealed class DeadlineProximityRule : DeterministicRuleBase
             return Task.FromResult(NotTriggered());
 
         var mostUrgent = urgentItems.MinBy(i => i.HoursUntil)!;
-        var severity = mostUrgent.HoursUntil <= UrgentHours
+        var overdueCount = urgentItems.Count(i => i.IsOverdue);
+
+        // Severity is Critical if: any item is overdue, any item due within 24h, or 3+ urgent items
+        var severity = mostUrgent.HoursUntil <= UrgentHours ||
+                       overdueCount > 0 ||
+                       urgentItems.Count >= SeverityItemCountThreshold
             ? RuleSeverity.Critical
             : RuleSeverity.High;
 
         var evidence = new Dictionary<string, object>
         {
             ["UrgentItemCount"] = urgentItems.Count,
+            ["OverdueCount"] = overdueCount,
             ["MostUrgentType"] = mostUrgent.Type,
             ["MostUrgentId"] = mostUrgent.Id,
             ["MostUrgentTitle"] = mostUrgent.Title,
             ["MostUrgentHoursUntil"] = mostUrgent.HoursUntil,
+            ["MostUrgentIsOverdue"] = mostUrgent.IsOverdue,
             ["MostUrgentProgress"] = Math.Round(mostUrgent.Progress * 100, 1),
-            ["AllUrgentItems"] = urgentItems.Select(i => new { i.Type, i.Id, i.Title, i.HoursUntil }).ToList()
+            ["AllUrgentItems"] = urgentItems.Select(i => new { i.Type, i.Id, i.Title, i.HoursUntil, i.IsOverdue }).ToList()
         };
 
         // Create direct recommendation for the most urgent item
@@ -112,6 +136,12 @@ public sealed class DeadlineProximityRule : DeterministicRuleBase
             _ => RecommendationTargetKind.UserProfile
         };
 
+        var (title, rationale) = mostUrgent.IsOverdue
+            ? ($"Overdue: \"{mostUrgent.Title}\" was due {Math.Abs(mostUrgent.HoursUntil)} hours ago",
+               $"This {mostUrgent.Type.ToLower()} is past its deadline with only {Math.Round(mostUrgent.Progress * 100)}% progress. Address this immediately or reschedule.")
+            : ($"Urgent: \"{mostUrgent.Title}\" due in {mostUrgent.HoursUntil} hours",
+               $"This {mostUrgent.Type.ToLower()} is due soon with only {Math.Round(mostUrgent.Progress * 100)}% progress. Focus on this today to avoid missing the deadline.");
+
         var directRecommendation = new DirectRecommendationCandidate(
             Type: RecommendationType.NextBestAction,
             Context: RecommendationContext.DriftAlert,
@@ -119,9 +149,9 @@ public sealed class DeadlineProximityRule : DeterministicRuleBase
             TargetEntityId: mostUrgent.Id,
             TargetEntityTitle: mostUrgent.Title,
             ActionKind: RecommendationActionKind.ExecuteToday,
-            Title: $"Urgent: \"{mostUrgent.Title}\" due in {mostUrgent.HoursUntil} hours",
-            Rationale: $"This {mostUrgent.Type.ToLower()} is due soon with only {Math.Round(mostUrgent.Progress * 100)}% progress. Focus on this today to avoid missing the deadline.",
-            Score: 0.95m,
+            Title: title,
+            Rationale: rationale,
+            Score: mostUrgent.IsOverdue ? 0.98m : 0.95m,
             ActionSummary: $"Prioritize {mostUrgent.Type.ToLower()} completion");
 
         return Task.FromResult(Triggered(severity, evidence, directRecommendation));

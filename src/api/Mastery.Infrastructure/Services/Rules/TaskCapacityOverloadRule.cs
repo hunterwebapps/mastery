@@ -31,6 +31,10 @@ public sealed class TaskCapacityOverloadRule : DeterministicRuleBase
             ? constraints.MaxPlannedMinutesWeekend
             : constraints.MaxPlannedMinutesWeekday;
 
+        // Guard against division by zero when capacity is not set or is zero
+        if (capacityMinutes <= 0)
+            return Task.FromResult(NotTriggered());
+
         // Sum up all tasks scheduled for today that are not completed
         var todayTasks = state.Tasks
             .Where(t => t.ScheduledDate == state.Today &&
@@ -49,9 +53,16 @@ public sealed class TaskCapacityOverloadRule : DeterministicRuleBase
         var severity = overloadPercentage switch
         {
             > 50 => RuleSeverity.Critical,
-            > 30 => RuleSeverity.High,
-            > 20 => RuleSeverity.Medium,
-            _ => RuleSeverity.Low
+            > 35 => RuleSeverity.High,
+            _ => RuleSeverity.Medium // 20-35% (rule only triggers above 20%)
+        };
+
+        // Scale recommendation score based on severity
+        var score = severity switch
+        {
+            RuleSeverity.Critical => 0.95m,
+            RuleSeverity.High => 0.85m,
+            _ => 0.75m
         };
 
         var evidence = new Dictionary<string, object>
@@ -63,6 +74,9 @@ public sealed class TaskCapacityOverloadRule : DeterministicRuleBase
             ["IsWeekend"] = isWeekend
         };
 
+        // Calculate excess minutes for actionable suggestion
+        var excessMinutes = plannedMinutes - capacityMinutes;
+
         // Create direct recommendation to defer non-critical tasks
         var directRecommendation = new DirectRecommendationCandidate(
             Type: RecommendationType.PlanRealismAdjustment,
@@ -72,8 +86,8 @@ public sealed class TaskCapacityOverloadRule : DeterministicRuleBase
             TargetEntityTitle: null,
             ActionKind: RecommendationActionKind.ReflectPrompt,
             Title: $"Today's plan is {Math.Round(overloadPercentage)}% over capacity",
-            Rationale: $"You have {plannedMinutes} minutes of tasks scheduled but only {capacityMinutes} minutes of available capacity. Consider deferring {todayTasks.Count - (int)(capacityMinutes / 30)} tasks to reduce stress and improve completion rate.",
-            Score: 0.9m,
+            Rationale: $"You have {plannedMinutes} minutes of tasks scheduled but only {capacityMinutes} minutes of available capacity. Consider rescheduling tasks totaling at least {excessMinutes} minutes to reduce stress and improve completion rate.",
+            Score: score,
             ActionSummary: "Review and reschedule lower-priority tasks");
 
         return Task.FromResult(Triggered(severity, evidence, directRecommendation));

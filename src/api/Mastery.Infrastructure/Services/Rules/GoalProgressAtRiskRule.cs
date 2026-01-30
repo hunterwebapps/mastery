@@ -1,7 +1,10 @@
 using Mastery.Application.Common.Models;
 using Mastery.Domain.Entities.Signal;
 using Mastery.Domain.Enums;
-using Mastery.Domain.Events;
+using GoalCreatedEvent = Mastery.Domain.Entities.Goal.GoalCreatedEvent;
+using GoalScoreboardUpdatedEvent = Mastery.Domain.Entities.Goal.GoalScoreboardUpdatedEvent;
+using GoalUpdatedEvent = Mastery.Domain.Entities.Goal.GoalUpdatedEvent;
+using MetricObservationRecordedEvent = Mastery.Domain.Entities.Metrics.MetricObservationRecordedEvent;
 
 namespace Mastery.Infrastructure.Services.Rules;
 

@@ -1,6 +1,5 @@
 using Mastery.Domain.Common;
 using Mastery.Domain.Enums;
-using Mastery.Domain.Events;
 using Mastery.Domain.Exceptions;
 using Mastery.Domain.ValueObjects;
 
@@ -456,6 +455,9 @@ public sealed class Habit : OwnedEntity, IAggregateRoot
     {
         var occurrence = GetOrCreateOccurrence(date);
         occurrence.Reschedule(newDate);
+
+        AddDomainEvent(new HabitOccurrenceRescheduledEvent(
+            occurrence.Id, Id, UserId, date, newDate));
     }
 
     #endregion

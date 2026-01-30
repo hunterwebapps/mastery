@@ -16,9 +16,10 @@ public enum RecommendationType
     CheckInConsistencyNudge,
     MetricObservationReminder,
 
-    // Task Edit/Archive suggestions
+    // Task Edit/Archive/Triage suggestions
     TaskEditSuggestion,
     TaskArchiveSuggestion,
+    TaskTriageSuggestion,
 
     // Habit Edit/Archive suggestions
     HabitEditSuggestion,

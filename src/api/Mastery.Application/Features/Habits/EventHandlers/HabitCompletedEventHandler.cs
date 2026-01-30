@@ -1,7 +1,7 @@
 using MediatR;
+using Mastery.Domain.Entities.Habit;
 using Mastery.Domain.Entities.Metrics;
 using Mastery.Domain.Enums;
-using Mastery.Domain.Events;
 using Mastery.Domain.Interfaces;
 
 namespace Mastery.Application.Features.Habits.EventHandlers;

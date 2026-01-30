@@ -1,7 +1,9 @@
 using Mastery.Application.Common.Models;
 using Mastery.Domain.Entities.Signal;
 using Mastery.Domain.Enums;
-using Mastery.Domain.Events;
+using TaskCreatedEvent = Mastery.Domain.Entities.Task.TaskCreatedEvent;
+using TaskRescheduledEvent = Mastery.Domain.Entities.Task.TaskRescheduledEvent;
+using TaskUpdatedEvent = Mastery.Domain.Entities.Task.TaskUpdatedEvent;
 using TaskStatus = Mastery.Domain.Enums.TaskStatus;
 
 namespace Mastery.Infrastructure.Services.Rules;

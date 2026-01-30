@@ -1,6 +1,6 @@
 using MediatR;
-using Mastery.Domain.Events;
 using Mastery.Domain.Interfaces;
+using TaskCompletionUndoneEvent = Mastery.Domain.Entities.Task.TaskCompletionUndoneEvent;
 
 namespace Mastery.Application.Features.Tasks.EventHandlers;
 

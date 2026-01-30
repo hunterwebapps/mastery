@@ -1,8 +1,8 @@
 using MediatR;
 using Mastery.Domain.Entities.Metrics;
 using Mastery.Domain.Enums;
-using Mastery.Domain.Events;
 using Mastery.Domain.Interfaces;
+using TaskCompletedEvent = Mastery.Domain.Entities.Task.TaskCompletedEvent;
 
 namespace Mastery.Application.Features.Tasks.EventHandlers;
 

@@ -1,6 +1,5 @@
 using Mastery.Domain.Common;
 using Mastery.Domain.Enums;
-using Mastery.Domain.Events;
 using Mastery.Domain.Exceptions;
 
 namespace Mastery.Domain.Entities.CheckIn;

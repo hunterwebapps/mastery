@@ -38,6 +38,11 @@ public static class DependencyInjection
         services.AddSingleton<DlqMonitorService>();
         services.AddHostedService(sp => sp.GetRequiredService<DlqMonitorService>());
 
+        // Register window signal scheduler as singleton and hosted service
+        // Emits MorningWindowStart/EveningWindowStart signals at appropriate times per user
+        services.AddSingleton<WindowSignalSchedulerService>();
+        services.AddHostedService(sp => sp.GetRequiredService<WindowSignalSchedulerService>());
+
         // Get connection string for CAP storage
         var sqlConnectionString = configuration.GetConnectionString("MasteryDb")
             ?? throw new InvalidOperationException("MasteryDb connection string is required for CAP");

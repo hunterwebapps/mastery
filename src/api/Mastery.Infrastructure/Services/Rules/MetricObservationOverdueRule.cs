@@ -1,7 +1,7 @@
 using Mastery.Application.Common.Models;
+using Mastery.Domain.Entities.Metrics;
 using Mastery.Domain.Entities.Signal;
 using Mastery.Domain.Enums;
-using Mastery.Domain.Events;
 
 namespace Mastery.Infrastructure.Services.Rules;
 
