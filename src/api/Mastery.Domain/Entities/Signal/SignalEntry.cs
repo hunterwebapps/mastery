@@ -104,6 +104,17 @@ public sealed class SignalEntry
     /// </summary>
     public DateTime ExpiresAt { get; private set; }
 
+    /// <summary>
+    /// Number of times this signal has been deferred due to pending embeddings.
+    /// </summary>
+    public int DeferralCount { get; private set; }
+
+    /// <summary>
+    /// If set, the signal should not be processed until after this time.
+    /// Used for deferral when embeddings are still being generated.
+    /// </summary>
+    public DateTime? NextProcessAfter { get; private set; }
+
     // Private constructor for EF Core
     private SignalEntry() { }
 
@@ -229,6 +240,23 @@ public sealed class SignalEntry
             LeaseHolder = null;
         }
     }
+
+    /// <summary>
+    /// Defers processing of this signal until the specified time.
+    /// Increments the deferral count and releases the lease.
+    /// </summary>
+    /// <param name="deferUntil">When the signal can be processed next.</param>
+    public void Defer(DateTime deferUntil)
+    {
+        DeferralCount++;
+        NextProcessAfter = deferUntil;
+        ReleaseLease();
+    }
+
+    /// <summary>
+    /// Returns true if the signal has reached the maximum deferral count.
+    /// </summary>
+    public bool HasReachedMaxDeferrals(int maxDeferrals) => DeferralCount >= maxDeferrals;
 
     /// <summary>
     /// Checks if this signal has expired.

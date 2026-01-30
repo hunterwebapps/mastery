@@ -42,4 +42,13 @@ public interface IOutboxRepository
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Number of entries archived.</returns>
     Task<int> ArchiveProcessedEntriesAsync(DateTime olderThan, int batchSize, CancellationToken ct);
+
+    /// <summary>
+    /// Checks if there are any pending outbox entries for a given user.
+    /// Used to determine if embeddings are still being generated.
+    /// </summary>
+    /// <param name="userId">The user ID to check.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>True if there are pending entries, false otherwise.</returns>
+    Task<bool> HasPendingEntriesForUserAsync(string userId, CancellationToken ct);
 }

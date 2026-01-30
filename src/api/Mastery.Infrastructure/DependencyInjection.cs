@@ -15,9 +15,9 @@ using Mastery.Infrastructure.Embeddings;
 using Mastery.Infrastructure.Embeddings.Strategies;
 using Mastery.Infrastructure.Identity;
 using Mastery.Infrastructure.Identity.Services;
-using Mastery.Infrastructure.Outbox;
 using Mastery.Infrastructure.Repositories;
 using Mastery.Infrastructure.Services;
+using Mastery.Infrastructure.Services.Rules;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Azure.Cosmos;
 using Microsoft.EntityFrameworkCore;
@@ -67,6 +67,26 @@ public static class DependencyInjection
         services.AddScoped<ISignalProcessingHistoryRepository, SignalProcessingHistoryRepository>();
         services.AddScoped<ISignalClassifier, SignalClassifier>();
         services.AddScoped<IUserScheduleResolver, UserScheduleResolver>();
+
+        // Tier 0 deterministic rules engine
+        services.AddScoped<IDeterministicRule, CapacityOverloadRule>();
+        services.AddScoped<IDeterministicRule, DeadlineProximityRule>();
+        services.AddScoped<IDeterministicRule, StreakBreakDetectionRule>();
+        services.AddScoped<IDeterministicRule, AdherenceThresholdRule>();
+        services.AddScoped<IDeterministicRule, EnergyMismatchRule>();
+        services.AddScoped<IDeterministicRule, StaleExperimentRule>();
+        services.AddScoped<IDeterministicRule, NoTop1SelectedRule>();
+        services.AddScoped<IDeterministicRule, CheckInMissingRule>();
+        services.AddScoped<IDeterministicRule, GoalScoreboardIncompleteRule>();
+        services.AddScoped<IDeterministicRule, TaskOverdueRule>();
+        services.AddScoped<IDeterministicRulesEngine, DeterministicRulesEngine>();
+
+        // Tier 1 quick assessment services
+        services.AddScoped<IStateDeltaCalculator, StateDeltaCalculator>();
+        services.AddScoped<IQuickAssessmentService, QuickAssessmentService>();
+
+        // Tiered assessment orchestrator (Tier 0 → Tier 1 → Tier 2)
+        services.AddScoped<ITieredAssessmentEngine, TieredAssessmentEngine>();
 
         services.AddSingleton<IDateTimeProvider, DateTimeProvider>();
 

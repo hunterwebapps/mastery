@@ -45,6 +45,7 @@ public class SignalQueueRepository : ISignalQueue
 
         // Use raw SQL with UPDLOCK, READPAST to atomically select and lock rows
         // This prevents multiple workers from acquiring the same entries
+        // Also filter by NextProcessAfter to respect embedding deferral
         var entries = await _context.SignalEntries
             .FromSqlRaw(
                 """
@@ -53,6 +54,7 @@ public class SignalQueueRepository : ISignalQueue
                 WHERE Status = 'Pending'
                   AND Priority <= {1}
                   AND ExpiresAt > {2}
+                  AND (NextProcessAfter IS NULL OR NextProcessAfter <= {2})
                   AND (WindowType = 'Immediate'
                        OR ScheduledWindowStart IS NULL
                        OR ScheduledWindowStart <= {2})

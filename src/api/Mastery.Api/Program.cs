@@ -55,15 +55,17 @@ builder.Services.AddOpenApi(options =>
     });
 });
 
-// Background worker for proactive recommendations
-builder.Services.Configure<BackgroundWorkerOptions>(
-    builder.Configuration.GetSection(BackgroundWorkerOptions.SectionName));
-builder.Services.AddHostedService<RecommendationBackgroundWorker>();
-
 // Background worker for outbox processing (embedding generation)
 builder.Services.Configure<OutboxWorkerOptions>(
     builder.Configuration.GetSection(OutboxWorkerOptions.SectionName));
 builder.Services.AddHostedService<OutboxProcessingWorker>();
+
+// Signal processing workers (tiered assessment pipeline)
+builder.Services.Configure<SignalWorkerOptions>(
+    builder.Configuration.GetSection(SignalWorkerOptions.SectionName));
+builder.Services.AddHostedService<UrgentSignalWorker>();
+builder.Services.AddHostedService<ScheduledWindowWorker>();
+builder.Services.AddHostedService<BatchSignalWorker>();
 
 // Add CORS for React SPA
 builder.Services.AddCors(options =>

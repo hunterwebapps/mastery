@@ -84,6 +84,13 @@ public class SignalEntryConfiguration : IEntityTypeConfiguration<SignalEntry>
         builder.Property(x => x.SkipReason)
             .HasMaxLength(500);
 
+        // Deferral tracking for embedding race condition
+        builder.Property(x => x.DeferralCount)
+            .IsRequired()
+            .HasDefaultValue(0);
+
+        builder.Property(x => x.NextProcessAfter);
+
         // Index: Urgent signal polling - WHERE Priority='Urgent' AND Status='Pending'
         builder.HasIndex(x => new { x.Priority, x.Status, x.CreatedAt })
             .HasDatabaseName("IX_SignalEntries_Priority_Status_CreatedAt");
@@ -110,5 +117,10 @@ public class SignalEntryConfiguration : IEntityTypeConfiguration<SignalEntry>
         // Index: Entity deduplication lookup
         builder.HasIndex(x => new { x.UserId, x.EventType, x.TargetEntityType, x.TargetEntityId, x.Status })
             .HasDatabaseName("IX_SignalEntries_Deduplication");
+
+        // Index: Deferral-aware signal acquisition
+        builder.HasIndex(x => new { x.Status, x.Priority, x.NextProcessAfter, x.CreatedAt })
+            .HasDatabaseName("IX_SignalEntries_Status_Priority_NextProcessAfter")
+            .HasFilter("[Status] = 'Pending'");
     }
 }
