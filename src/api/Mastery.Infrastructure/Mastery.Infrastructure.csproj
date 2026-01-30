@@ -16,6 +16,12 @@
     </PackageReference>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="OpenAI" Version="2.8.0" />
+
+    <!-- CAP + Azure Service Bus for messaging -->
+    <PackageReference Include="DotNetCore.CAP" Version="8.1.0" />
+    <PackageReference Include="DotNetCore.CAP.AzureServiceBus" Version="8.1.0" />
+    <PackageReference Include="DotNetCore.CAP.SqlServer" Version="8.1.0" />
+    <PackageReference Include="DotNetCore.CAP.Dashboard" Version="8.1.0" />
   </ItemGroup>
 
   <PropertyGroup>

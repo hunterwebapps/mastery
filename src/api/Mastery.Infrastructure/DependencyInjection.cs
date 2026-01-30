@@ -15,6 +15,7 @@ using Mastery.Infrastructure.Embeddings;
 using Mastery.Infrastructure.Embeddings.Strategies;
 using Mastery.Infrastructure.Identity;
 using Mastery.Infrastructure.Identity.Services;
+using Mastery.Infrastructure.Messaging;
 using Mastery.Infrastructure.Repositories;
 using Mastery.Infrastructure.Services;
 using Mastery.Infrastructure.Services.Rules;
@@ -63,10 +64,13 @@ public static class DependencyInjection
         services.AddScoped<Outbox.IOutboxRepository, OutboxRepository>();
 
         // Signal queue services
-        services.AddScoped<ISignalQueue, SignalQueueRepository>();
+        services.AddScoped<ISignalEntryRepository, SignalEntryRepository>();
         services.AddScoped<ISignalProcessingHistoryRepository, SignalProcessingHistoryRepository>();
         services.AddScoped<ISignalClassifier, SignalClassifier>();
         services.AddScoped<IUserScheduleResolver, UserScheduleResolver>();
+
+        // Derived signal detection (P0 urgent signals)
+        services.AddScoped<IDerivedSignalDetector, DerivedSignalDetector>();
 
         // Tier 0 deterministic rules engine
         services.AddScoped<IDeterministicRule, CapacityOverloadRule>();
@@ -113,6 +117,9 @@ public static class DependencyInjection
 
         // Vector store / embedding services
         AddVectorStoreServices(services, configuration);
+
+        // CAP + Service Bus messaging
+        services.AddMessaging(configuration);
 
         // Identity configuration
         services.AddIdentity<ApplicationUser, IdentityRole>(options =>

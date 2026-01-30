@@ -1,13 +1,4 @@
 using Mastery.Application.Common.Interfaces;
-using Mastery.Domain.Common;
-using Mastery.Domain.Entities;
-using Mastery.Domain.Entities.CheckIn;
-using Mastery.Domain.Entities.Experiment;
-using Mastery.Domain.Entities.Goal;
-using Mastery.Domain.Entities.Habit;
-using Mastery.Domain.Entities.Metrics;
-using Mastery.Domain.Entities.Project;
-using Mastery.Domain.Entities.UserProfile;
 using Mastery.Domain.Enums;
 using Mastery.Domain.Events;
 
@@ -18,324 +9,6 @@ namespace Mastery.Infrastructure.Services;
 /// </summary>
 public sealed class SignalClassifier : ISignalClassifier
 {
-    /// <inheritdoc />
-    public SignalClassification? ClassifyEvent(IDomainEvent domainEvent, string userId, DateTime userLocalTime)
-    {
-        return domainEvent switch
-        {
-            // URGENT (P0) - Immediate processing required
-            // Note: These are typically derived signals, not direct domain events.
-            // Urgent classification happens through derived signal detection.
-
-            // WINDOW-ALIGNED (P1) - Process at user's natural breakpoints
-            MorningCheckInSubmittedEvent e => new SignalClassification(
-                SignalPriority.WindowAligned,
-                ProcessingWindowType.MorningWindow,
-                nameof(MorningCheckInSubmittedEvent),
-                nameof(CheckIn),
-                e.CheckInId,
-                new Dictionary<string, object>
-                {
-                    ["EnergyLevel"] = e.EnergyLevel,
-                    ["SelectedMode"] = e.SelectedMode.ToString()
-                }),
-
-            EveningCheckInSubmittedEvent e => new SignalClassification(
-                SignalPriority.WindowAligned,
-                ProcessingWindowType.EveningWindow,
-                nameof(EveningCheckInSubmittedEvent),
-                nameof(CheckIn),
-                e.CheckInId,
-                new Dictionary<string, object>
-                {
-                    ["Top1Completed"] = e.Top1Completed ?? false
-                }),
-
-            CheckInSkippedEvent e => new SignalClassification(
-                SignalPriority.WindowAligned,
-                e.Type == CheckInType.Morning ? ProcessingWindowType.MorningWindow : ProcessingWindowType.EveningWindow,
-                nameof(CheckInSkippedEvent),
-                nameof(CheckIn),
-                e.CheckInId,
-                new Dictionary<string, object>
-                {
-                    ["CheckInType"] = e.Type.ToString()
-                }),
-
-            // STANDARD (P2) - Batch processing within 4-6 hours
-            HabitCompletedEvent e => new SignalClassification(
-                SignalPriority.Standard,
-                ProcessingWindowType.BatchWindow,
-                nameof(HabitCompletedEvent),
-                nameof(Habit),
-                e.HabitId,
-                new Dictionary<string, object>
-                {
-                    ["OccurrenceId"] = e.OccurrenceId,
-                    ["CompletedOn"] = e.CompletedOn.ToString("O"),
-                    ["ModeUsed"] = e.ModeUsed?.ToString() ?? "null"
-                }),
-
-            HabitMissedEvent e => new SignalClassification(
-                SignalPriority.Standard,
-                ProcessingWindowType.BatchWindow,
-                nameof(HabitMissedEvent),
-                nameof(Habit),
-                e.HabitId,
-                new Dictionary<string, object>
-                {
-                    ["OccurrenceId"] = e.OccurrenceId,
-                    ["ScheduledOn"] = e.ScheduledOn.ToString("O"),
-                    ["Reason"] = e.Reason.ToString()
-                }),
-
-            HabitSkippedEvent e => new SignalClassification(
-                SignalPriority.Standard,
-                ProcessingWindowType.BatchWindow,
-                nameof(HabitSkippedEvent),
-                nameof(Habit),
-                e.HabitId,
-                new Dictionary<string, object>
-                {
-                    ["OccurrenceId"] = e.OccurrenceId,
-                    ["ScheduledOn"] = e.ScheduledOn.ToString("O")
-                }),
-
-            TaskCompletedEvent e => new SignalClassification(
-                SignalPriority.Standard,
-                ProcessingWindowType.BatchWindow,
-                nameof(TaskCompletedEvent),
-                nameof(Task),
-                e.TaskId),
-
-            TaskRescheduledEvent e => new SignalClassification(
-                SignalPriority.Standard,
-                ProcessingWindowType.BatchWindow,
-                nameof(TaskRescheduledEvent),
-                nameof(Task),
-                e.TaskId,
-                new Dictionary<string, object>
-                {
-                    ["NewDate"] = e.NewDate.ToString("O"),
-                    ["Reason"] = e.Reason?.ToString() ?? "None"
-                }),
-
-            GoalStatusChangedEvent e => new SignalClassification(
-                SignalPriority.Standard,
-                ProcessingWindowType.BatchWindow,
-                nameof(GoalStatusChangedEvent),
-                nameof(Goal),
-                e.GoalId,
-                new Dictionary<string, object>
-                {
-                    ["NewStatus"] = e.NewStatus.ToString()
-                }),
-
-            MetricObservationRecordedEvent e => new SignalClassification(
-                SignalPriority.Standard,
-                ProcessingWindowType.BatchWindow,
-                nameof(MetricObservationRecordedEvent),
-                nameof(MetricObservation),
-                e.ObservationId,
-                new Dictionary<string, object>
-                {
-                    ["MetricDefinitionId"] = e.MetricDefinitionId,
-                    ["Value"] = e.Value
-                }),
-
-            ExperimentStartedEvent e => new SignalClassification(
-                SignalPriority.Standard,
-                ProcessingWindowType.BatchWindow,
-                nameof(ExperimentStartedEvent),
-                nameof(Experiment),
-                e.ExperimentId),
-
-            ExperimentCompletedEvent e => new SignalClassification(
-                SignalPriority.Standard,
-                ProcessingWindowType.BatchWindow,
-                nameof(ExperimentCompletedEvent),
-                nameof(Experiment),
-                e.ExperimentId,
-                new Dictionary<string, object>
-                {
-                    ["Outcome"] = e.Outcome.ToString()
-                }),
-
-            ProjectStatusChangedEvent e => new SignalClassification(
-                SignalPriority.Standard,
-                ProcessingWindowType.BatchWindow,
-                nameof(ProjectStatusChangedEvent),
-                nameof(Project),
-                e.ProjectId,
-                new Dictionary<string, object>
-                {
-                    ["NewStatus"] = e.NewStatus.ToString()
-                }),
-
-            HabitStreakMilestoneEvent e => new SignalClassification(
-                SignalPriority.Standard,
-                ProcessingWindowType.BatchWindow,
-                nameof(HabitStreakMilestoneEvent),
-                nameof(Habit),
-                e.HabitId,
-                new Dictionary<string, object>
-                {
-                    ["StreakCount"] = e.StreakCount,
-                    ["MilestoneType"] = e.MilestoneType
-                }),
-
-            // LOW (P3) - Background processing within 24 hours
-            HabitCreatedEvent e => new SignalClassification(
-                SignalPriority.Low,
-                ProcessingWindowType.BatchWindow,
-                nameof(HabitCreatedEvent),
-                nameof(Habit),
-                e.HabitId),
-
-            HabitUpdatedEvent e => new SignalClassification(
-                SignalPriority.Low,
-                ProcessingWindowType.BatchWindow,
-                nameof(HabitUpdatedEvent),
-                nameof(Habit),
-                e.HabitId,
-                new Dictionary<string, object>
-                {
-                    ["ChangedSection"] = e.ChangedSection
-                }),
-
-            HabitStatusChangedEvent e => new SignalClassification(
-                SignalPriority.Low,
-                ProcessingWindowType.BatchWindow,
-                nameof(HabitStatusChangedEvent),
-                nameof(Habit),
-                e.HabitId,
-                new Dictionary<string, object>
-                {
-                    ["NewStatus"] = e.NewStatus.ToString()
-                }),
-
-            HabitArchivedEvent e => new SignalClassification(
-                SignalPriority.Low,
-                ProcessingWindowType.BatchWindow,
-                nameof(HabitArchivedEvent),
-                nameof(Habit),
-                e.HabitId),
-
-            GoalCreatedEvent e => new SignalClassification(
-                SignalPriority.Low,
-                ProcessingWindowType.BatchWindow,
-                nameof(GoalCreatedEvent),
-                nameof(Goal),
-                e.GoalId),
-
-            GoalUpdatedEvent e => new SignalClassification(
-                SignalPriority.Low,
-                ProcessingWindowType.BatchWindow,
-                nameof(GoalUpdatedEvent),
-                nameof(Goal),
-                e.GoalId),
-
-            TaskCreatedEvent e => new SignalClassification(
-                SignalPriority.Low,
-                ProcessingWindowType.BatchWindow,
-                nameof(TaskCreatedEvent),
-                nameof(Task),
-                e.TaskId),
-
-            TaskUpdatedEvent e => new SignalClassification(
-                SignalPriority.Low,
-                ProcessingWindowType.BatchWindow,
-                nameof(TaskUpdatedEvent),
-                nameof(Task),
-                e.TaskId),
-
-            TaskArchivedEvent e => new SignalClassification(
-                SignalPriority.Low,
-                ProcessingWindowType.BatchWindow,
-                nameof(TaskArchivedEvent),
-                nameof(Task),
-                e.TaskId),
-
-            ProjectCreatedEvent e => new SignalClassification(
-                SignalPriority.Low,
-                ProcessingWindowType.BatchWindow,
-                nameof(ProjectCreatedEvent),
-                nameof(Project),
-                e.ProjectId),
-
-            ProjectUpdatedEvent e => new SignalClassification(
-                SignalPriority.Low,
-                ProcessingWindowType.BatchWindow,
-                nameof(ProjectUpdatedEvent),
-                nameof(Project),
-                e.ProjectId),
-
-            ExperimentCreatedEvent e => new SignalClassification(
-                SignalPriority.Low,
-                ProcessingWindowType.BatchWindow,
-                nameof(ExperimentCreatedEvent),
-                nameof(Experiment),
-                e.ExperimentId),
-
-            UserProfileUpdatedEvent => new SignalClassification(
-                SignalPriority.Low,
-                ProcessingWindowType.BatchWindow,
-                nameof(UserProfileUpdatedEvent),
-                nameof(UserProfile),
-                null),
-
-            SeasonCreatedEvent e => new SignalClassification(
-                SignalPriority.Low,
-                ProcessingWindowType.BatchWindow,
-                nameof(SeasonCreatedEvent),
-                nameof(Season),
-                e.SeasonId),
-
-            CheckInUpdatedEvent e => new SignalClassification(
-                SignalPriority.Low,
-                ProcessingWindowType.BatchWindow,
-                nameof(CheckInUpdatedEvent),
-                nameof(CheckIn),
-                e.CheckInId),
-
-            // Events that don't generate signals (handled elsewhere or internal)
-            HabitUndoneEvent => null,
-            HabitModeSuggestedEvent => null,
-            RecommendationAcceptedEvent => null,
-            RecommendationDismissedEvent => null,
-            RecommendationSnoozedEvent => null,
-            DiagnosticSignalDetectedEvent => null, // Handled by diagnostic system
-            TaskStatusChangedEvent => null, // Covered by specific events like TaskCompletedEvent
-            TaskCompletionUndoneEvent => null,
-            TaskCancelledEvent => null,
-            TaskScheduledEvent => null,
-            TaskDependencyAddedEvent => null,
-            TaskDependencyRemovedEvent => null,
-            GoalCompletedEvent => null, // Covered by GoalStatusChangedEvent
-            GoalScoreboardUpdatedEvent => null, // Internal scoreboard updates
-            MetricObservationCorrectedEvent => null,
-            ExperimentPausedEvent => null,
-            ExperimentResumedEvent => null,
-            ExperimentAbandonedEvent => null,
-            ProjectNextActionSetEvent => null,
-            ProjectCompletedEvent => null, // Covered by ProjectStatusChangedEvent
-            MilestoneAddedEvent => null,
-            MilestoneCompletedEvent => null,
-            SeasonActivatedEvent => null,
-            SeasonEndedEvent => null,
-            UserProfileCreatedEvent => null,
-            PreferencesUpdatedEvent => null,
-            ConstraintsUpdatedEvent => null,
-            MetricDefinitionCreatedEvent => null,
-            MetricDefinitionUpdatedEvent => null,
-            MetricDefinitionArchivedEvent => null,
-            RecommendationsGeneratedEvent => null,
-
-            // Unknown events - log and skip
-            _ => null
-        };
-    }
-
     /// <inheritdoc />
     public bool ShouldEscalateToUrgent(IReadOnlyList<SignalClassification> pendingSignals, object? state)
     {
@@ -359,5 +32,67 @@ public sealed class SignalClassifier : ISignalClassifier
             return true;
 
         return false;
+    }
+
+    /// <inheritdoc />
+    public SignalClassification? ClassifyOutboxEntry(
+        string entityType,
+        Guid entityId,
+        string? domainEventType,
+        string? userId)
+    {
+        // Skip if no user ID or no event type
+        if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(domainEventType))
+            return null;
+
+        // Map domain event type name to priority and window
+        // Note: P0 (Urgent) signals are detected at processing time by Tier 0 rules,
+        // not at classification time from outbox entries
+        return domainEventType switch
+        {
+            // P1 (Window-Aligned) - Check-ins
+            nameof(MorningCheckInSubmittedEvent) => new SignalClassification(
+                SignalPriority.WindowAligned, ProcessingWindowType.MorningWindow,
+                domainEventType, entityType, entityId),
+            nameof(EveningCheckInSubmittedEvent) => new SignalClassification(
+                SignalPriority.WindowAligned, ProcessingWindowType.EveningWindow,
+                domainEventType, entityType, entityId),
+            nameof(CheckInSkippedEvent) => new SignalClassification(
+                SignalPriority.WindowAligned, ProcessingWindowType.BatchWindow,
+                domainEventType, entityType, entityId),
+
+            // P2 (Standard) - Behavioral signals
+            nameof(HabitCompletedEvent) or nameof(HabitMissedEvent) or nameof(HabitSkippedEvent) =>
+                new SignalClassification(SignalPriority.Standard, ProcessingWindowType.BatchWindow,
+                    domainEventType, entityType, entityId),
+            nameof(TaskCompletedEvent) or nameof(TaskRescheduledEvent) =>
+                new SignalClassification(SignalPriority.Standard, ProcessingWindowType.BatchWindow,
+                    domainEventType, entityType, entityId),
+            nameof(MetricObservationRecordedEvent) =>
+                new SignalClassification(SignalPriority.Standard, ProcessingWindowType.BatchWindow,
+                    domainEventType, entityType, entityId),
+            nameof(ExperimentStartedEvent) or nameof(ExperimentCompletedEvent) =>
+                new SignalClassification(SignalPriority.Standard, ProcessingWindowType.BatchWindow,
+                    domainEventType, entityType, entityId),
+            nameof(GoalStatusChangedEvent) or nameof(ProjectStatusChangedEvent) =>
+                new SignalClassification(SignalPriority.Standard, ProcessingWindowType.BatchWindow,
+                    domainEventType, entityType, entityId),
+            nameof(HabitStreakMilestoneEvent) =>
+                new SignalClassification(SignalPriority.Standard, ProcessingWindowType.BatchWindow,
+                    domainEventType, entityType, entityId),
+
+            // P3 (Low) - Metadata changes
+            nameof(GoalCreatedEvent) or nameof(GoalUpdatedEvent) or
+            nameof(HabitCreatedEvent) or nameof(HabitUpdatedEvent) or nameof(HabitStatusChangedEvent) or nameof(HabitArchivedEvent) or
+            nameof(TaskCreatedEvent) or nameof(TaskUpdatedEvent) or nameof(TaskArchivedEvent) or
+            nameof(ProjectCreatedEvent) or nameof(ProjectUpdatedEvent) or
+            nameof(ExperimentCreatedEvent) or
+            nameof(UserProfileUpdatedEvent) or nameof(SeasonCreatedEvent) or nameof(CheckInUpdatedEvent) =>
+                new SignalClassification(SignalPriority.Low, ProcessingWindowType.BatchWindow,
+                    domainEventType, entityType, entityId),
+
+            // Skip events that don't need signals
+            _ => null
+        };
     }
 }

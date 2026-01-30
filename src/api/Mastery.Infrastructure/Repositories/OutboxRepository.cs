@@ -99,12 +99,4 @@ public class OutboxRepository : IOutboxRepository
 
         return deleted;
     }
-
-    public async Task<bool> HasPendingEntriesForUserAsync(string userId, CancellationToken ct)
-    {
-        return await _context.OutboxEntries
-            .AnyAsync(e => e.UserId == userId
-                        && (e.Status == OutboxEntryStatus.Pending || e.Status == OutboxEntryStatus.Processing),
-                      ct);
-    }
 }

@@ -67,6 +67,12 @@ public sealed class OutboxEntry
     /// </summary>
     public OutboxEntryStatus Status { get; private set; }
 
+    /// <summary>
+    /// The domain event type that triggered this entry (e.g., "HabitCompletedEvent").
+    /// Used for accurate signal classification. Null for delete operations.
+    /// </summary>
+    public string DomainEventType { get; private set; } = null!;
+
     // Private constructor for EF Core
     private OutboxEntry() { }
 
@@ -78,7 +84,8 @@ public sealed class OutboxEntry
         Guid entityId,
         string operation,
         string? userId,
-        DateTime createdAt)
+        DateTime createdAt,
+        string domainEventType)
     {
         return new OutboxEntry
         {
@@ -87,6 +94,7 @@ public sealed class OutboxEntry
             Operation = operation,
             UserId = userId,
             CreatedAt = createdAt,
+            DomainEventType = domainEventType,
             Status = OutboxEntryStatus.Pending,
             RetryCount = 0
         };

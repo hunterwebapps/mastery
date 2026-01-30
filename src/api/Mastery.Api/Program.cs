@@ -3,12 +3,13 @@ using System.Text.Json.Serialization;
 using Azure.Identity;
 using Mastery.Api.Middleware;
 using Mastery.Api.Services;
-using Mastery.Api.Workers;
 using Mastery.Application;
 using Mastery.Application.Common.Interfaces;
+using Mastery.Api.HealthChecks;
 using Mastery.Infrastructure;
 using Mastery.Infrastructure.Data;
 using Mastery.Infrastructure.Identity;
+using Mastery.Infrastructure.Messaging;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.IdentityModel.Tokens;
@@ -55,17 +56,12 @@ builder.Services.AddOpenApi(options =>
     });
 });
 
-// Background worker for outbox processing (embedding generation)
-builder.Services.Configure<OutboxWorkerOptions>(
-    builder.Configuration.GetSection(OutboxWorkerOptions.SectionName));
-builder.Services.AddHostedService<OutboxProcessingWorker>();
+// Check if Service Bus messaging is enabled
+var serviceBusOptions = builder.Configuration
+    .GetSection(ServiceBusOptions.SectionName)
+    .Get<ServiceBusOptions>() ?? new ServiceBusOptions();
 
-// Signal processing workers (tiered assessment pipeline)
-builder.Services.Configure<SignalWorkerOptions>(
-    builder.Configuration.GetSection(SignalWorkerOptions.SectionName));
-builder.Services.AddHostedService<UrgentSignalWorker>();
-builder.Services.AddHostedService<ScheduledWindowWorker>();
-builder.Services.AddHostedService<BatchSignalWorker>();
+// When Service Bus is enabled, CAP consumers handle message processing automatically
 
 // Add CORS for React SPA
 builder.Services.AddCors(options =>
@@ -130,6 +126,10 @@ builder.Services.AddAuthorizationBuilder()
 // Database seeder
 builder.Services.AddScoped<MasteryDbSeeder>();
 
+// Health checks
+builder.Services.AddHealthChecks()
+    .AddCheck<ServiceBusHealthCheck>("service-bus", tags: ["messaging"]);
+
 var app = builder.Build();
 
 // Seed roles and super user
@@ -152,11 +152,19 @@ if (app.Environment.IsDevelopment())
     });
 }
 
+// CAP Dashboard for message monitoring
+app.MapGet("/cap", context =>
+{
+    context.Response.Redirect("/cap/dashboard");
+    return Task.CompletedTask;
+});
+
 app.UseSerilogRequestLogging();
 app.UseHttpsRedirection();
 app.UseCors("AllowSpa");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHealthChecks("/health");
 
 app.Run();

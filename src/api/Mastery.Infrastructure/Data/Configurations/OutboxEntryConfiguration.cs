@@ -57,6 +57,10 @@ public class OutboxEntryConfiguration : IEntityTypeConfiguration<OutboxEntry>
             .HasConversion<string>()
             .HasMaxLength(20);
 
+        // Domain event type for signal classification
+        builder.Property(x => x.DomainEventType)
+            .HasMaxLength(100);
+
         // Index: Primary polling query - WHERE Status='Pending' ORDER BY CreatedAt
         builder.HasIndex(x => new { x.Status, x.CreatedAt })
             .HasDatabaseName("IX_OutboxEntries_Status_CreatedAt");
