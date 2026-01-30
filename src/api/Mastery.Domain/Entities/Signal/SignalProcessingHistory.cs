@@ -25,6 +25,11 @@ public sealed class SignalProcessingHistory : BaseEntity, IAggregateRoot
     public DateTime StartedAt { get; private set; }
 
     /// <summary>
+    /// The batch ID from the incoming message for idempotency.
+    /// </summary>
+    public Guid BatchId { get; private set; }
+
+    /// <summary>
     /// When this processing cycle completed.
     /// </summary>
     public DateTime? CompletedAt { get; private set; }
@@ -105,6 +110,7 @@ public sealed class SignalProcessingHistory : BaseEntity, IAggregateRoot
         ProcessingWindowType windowType,
         DateTime startedAt,
         int signalsReceived,
+        Guid batchId,
         IEnumerable<long>? signalIds = null)
     {
         return new SignalProcessingHistory
@@ -113,6 +119,7 @@ public sealed class SignalProcessingHistory : BaseEntity, IAggregateRoot
             WindowType = windowType,
             StartedAt = startedAt,
             SignalsReceived = signalsReceived,
+            BatchId = batchId,
             SignalIdsJson = signalIds != null
                 ? System.Text.Json.JsonSerializer.Serialize(signalIds)
                 : null,

@@ -4,7 +4,9 @@ using Mastery.Domain.Entities.Signal;
 using Mastery.Domain.Enums;
 using Mastery.Domain.Interfaces;
 using Mastery.Infrastructure.Messaging.Events;
+using Mastery.Infrastructure.Telemetry;
 using Microsoft.Extensions.Logging;
+using Serilog.Context;
 
 namespace Mastery.Infrastructure.Messaging.Consumers;
 
@@ -53,6 +55,23 @@ public abstract class BaseSignalConsumer<TConsumer>(
 
     protected async Task ProcessBatchAsync(SignalRoutedBatchEvent batch, CancellationToken cancellationToken)
     {
+        using var activity = ActivityContextHelper.StartLinkedActivity(
+            $"Process{GetSignalTypeDescription(batch)}Batch",
+            batch.CorrelationId);
+
+        using var prop1 = LogContext.PushProperty("CorrelationId", batch.CorrelationId ?? "unknown");
+        using var prop2 = LogContext.PushProperty("BatchId", batch.BatchId);
+
+        // IDEMPOTENCY CHECK: Skip if already processed
+        var alreadyProcessed = await HistoryRepo.ExistsByBatchIdAsync(batch.BatchId, cancellationToken);
+        if (alreadyProcessed)
+        {
+            Logger.LogInformation(
+                "Batch {BatchId} for user {UserId} already processed, skipping (idempotent)",
+                batch.BatchId, batch.UserId);
+            return;
+        }
+
         var signalDescription = GetSignalTypeDescription(batch);
 
         Logger.LogDebug(
@@ -70,7 +89,8 @@ public abstract class BaseSignalConsumer<TConsumer>(
             batch.UserId,
             windowType,
             startedAt,
-            signalsReceived: batch.Signals.Count);
+            signalsReceived: batch.Signals.Count,
+            batchId: batch.BatchId);
 
         try
         {

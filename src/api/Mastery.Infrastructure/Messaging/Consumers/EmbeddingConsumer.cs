@@ -4,8 +4,10 @@ using Mastery.Application.Common.Models;
 using Mastery.Domain.Enums;
 using Mastery.Infrastructure.Messaging.Events;
 using Mastery.Infrastructure.Messaging.Services;
+using Mastery.Infrastructure.Telemetry;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Serilog.Context;
 
 namespace Mastery.Infrastructure.Messaging.Consumers;
 
@@ -26,6 +28,13 @@ public sealed class EmbeddingConsumer(
     [CapSubscribe("embeddings-pending")]
     public async Task HandleBatchAsync(EntityChangedBatchEvent batch, CancellationToken cancellationToken)
     {
+        using var activity = ActivityContextHelper.StartLinkedActivity(
+            "ProcessEmbeddingBatch",
+            batch.CorrelationId);
+
+        using var prop1 = LogContext.PushProperty("CorrelationId", batch.CorrelationId ?? "unknown");
+        using var prop2 = LogContext.PushProperty("BatchId", batch.BatchId);
+
         _logger.LogDebug("Processing batch of {Count} entity changes", batch.Events.Count);
 
         try

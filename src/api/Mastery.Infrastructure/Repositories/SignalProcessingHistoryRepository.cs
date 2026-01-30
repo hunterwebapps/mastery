@@ -37,6 +37,12 @@ public class SignalProcessingHistoryRepository : ISignalProcessingHistoryReposit
             .FirstOrDefaultAsync(ct);
     }
 
+    public async Task<bool> ExistsByBatchIdAsync(Guid batchId, CancellationToken ct = default)
+    {
+        return await _context.SignalProcessingHistory
+            .AnyAsync(h => h.BatchId == batchId, ct);
+    }
+
     public async Task<IReadOnlyList<SignalProcessingHistory>> GetRecentAsync(int count, CancellationToken ct = default)
     {
         return await _context.SignalProcessingHistory

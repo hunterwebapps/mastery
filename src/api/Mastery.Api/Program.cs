@@ -10,6 +10,8 @@ using Mastery.Infrastructure;
 using Mastery.Infrastructure.Data;
 using Mastery.Infrastructure.Identity;
 using Mastery.Infrastructure.Messaging;
+using Mastery.Infrastructure.Telemetry;
+using Microsoft.ApplicationInsights;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.IdentityModel.Tokens;
@@ -27,9 +29,26 @@ if (!string.IsNullOrEmpty(keyVaultUri))
         new DefaultAzureCredential());
 }
 
-// Configure Serilog
-builder.Host.UseSerilog((context, configuration) =>
-    configuration.ReadFrom.Configuration(context.Configuration));
+// Add Application Insights
+var appInsightsOptions = builder.Configuration
+    .GetSection(ApplicationInsightsOptions.SectionName)
+    .Get<ApplicationInsightsOptions>()
+      ?? throw new InvalidOperationException("Application Insights options are not configured properly.");
+
+builder.Services.AddApplicationInsightsTelemetry(options =>
+{
+    options.ConnectionString = appInsightsOptions.ConnectionString;
+    options.EnableAdaptiveSampling = appInsightsOptions.EnableAdaptiveSampling;
+});
+
+// Configure Serilog with Application Insights sink
+builder.Host.UseSerilog((context, services, configuration) =>
+{
+    configuration.ReadFrom.Configuration(context.Configuration);
+    configuration.WriteTo.ApplicationInsights(
+        services.GetRequiredService<TelemetryClient>(),
+        TelemetryConverter.Traces);
+});
 
 // Add Application and Infrastructure layers
 builder.Services.AddApplication();
@@ -144,6 +163,7 @@ using (var scope = app.Services.CreateScope())
 
 // Configure the HTTP request pipeline
 app.UseMiddleware<ExceptionHandlingMiddleware>();
+app.UseMiddleware<CorrelationIdMiddleware>();
 
 if (app.Environment.IsDevelopment())
 {

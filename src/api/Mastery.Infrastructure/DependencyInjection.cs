@@ -19,6 +19,7 @@ using Mastery.Infrastructure.Messaging;
 using Mastery.Infrastructure.Repositories;
 using Mastery.Infrastructure.Services;
 using Mastery.Infrastructure.Services.Rules;
+using Mastery.Infrastructure.Telemetry;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Azure.Cosmos;
 using Microsoft.EntityFrameworkCore;
@@ -61,7 +62,6 @@ public static class DependencyInjection
         services.AddScoped<IExperimentRepository, ExperimentRepository>();
         services.AddScoped<IRecommendationRepository, RecommendationRepository>();
         services.AddScoped<IRecommendationRunHistoryRepository, RecommendationRunHistoryRepository>();
-        services.AddScoped<Outbox.IOutboxRepository, OutboxRepository>();
 
         // Signal queue services
         services.AddScoped<ISignalEntryRepository, SignalEntryRepository>();
@@ -124,6 +124,9 @@ public static class DependencyInjection
 
         // CAP + Service Bus messaging
         services.AddMessaging(configuration);
+
+        // Application Insights telemetry
+        services.AddTelemetry(configuration);
 
         // Identity configuration
         services.AddIdentity<ApplicationUser, IdentityRole>(options =>

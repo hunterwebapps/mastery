@@ -31,6 +31,10 @@ public class SignalProcessingHistoryConfiguration : IEntityTypeConfiguration<Sig
 
         builder.Property(x => x.DurationMs);
 
+        // Batch ID for idempotency
+        builder.Property(x => x.BatchId)
+            .IsRequired();
+
         // Signal counts
         builder.Property(x => x.SignalsReceived)
             .IsRequired();
@@ -92,6 +96,11 @@ public class SignalProcessingHistoryConfiguration : IEntityTypeConfiguration<Sig
         // Index: Window type analysis
         builder.HasIndex(x => new { x.WindowType, x.StartedAt })
             .HasDatabaseName("IX_SignalProcessingHistory_WindowType_StartedAt");
+
+        // Index: Batch ID for idempotency checks
+        builder.HasIndex(x => x.BatchId)
+            .IsUnique()
+            .HasDatabaseName("IX_SignalProcessingHistory_BatchId");
 
         // Ignore domain events (from BaseEntity)
         builder.Ignore(x => x.DomainEvents);

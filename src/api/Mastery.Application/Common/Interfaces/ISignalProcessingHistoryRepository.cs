@@ -24,6 +24,11 @@ public interface ISignalProcessingHistoryRepository
     Task<SignalProcessingHistory?> GetLastForUserAsync(string userId, CancellationToken ct = default);
 
     /// <summary>
+    /// Checks if a batch has already been processed (for idempotency).
+    /// </summary>
+    Task<bool> ExistsByBatchIdAsync(Guid batchId, CancellationToken ct = default);
+
+    /// <summary>
     /// Gets recent processing history records.
     /// </summary>
     Task<IReadOnlyList<SignalProcessingHistory>> GetRecentAsync(int count, CancellationToken ct = default);

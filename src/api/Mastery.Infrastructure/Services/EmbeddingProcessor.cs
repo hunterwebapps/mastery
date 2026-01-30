@@ -1,13 +1,13 @@
 using Mastery.Application.Common.Interfaces;
 using Mastery.Application.Common.Models;
+using Mastery.Infrastructure.Messaging.Events;
 using Mastery.Infrastructure.Outbox;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace Mastery.Infrastructure.Services;
 
 /// <summary>
-/// Processes outbox entries to generate embeddings and store them in Cosmos DB.
+/// Processes entity change events to generate embeddings and store them in Cosmos DB.
 /// </summary>
 public class EmbeddingProcessor(
     IEntityResolver _entityResolver,
@@ -17,60 +17,60 @@ public class EmbeddingProcessor(
     ILogger<EmbeddingProcessor> _logger)
     : IEmbeddingProcessor
 {
-    public async Task ProcessBatchAsync(IReadOnlyList<OutboxEntry> entries, CancellationToken ct)
+    public async Task ProcessBatchAsync(IReadOnlyList<EntityChangedEvent> events, CancellationToken ct)
     {
         var deletions = new List<(string EntityType, Guid EntityId)>();
-        var documentsToEmbed = new List<(OutboxEntry Entry, object Entity, string Text)>();
+        var documentsToEmbed = new List<(EntityChangedEvent Event, object Entity, string Text)>();
 
-        await ResolveEntitiesAsync(entries, deletions, documentsToEmbed, ct);
+        await ResolveEntitiesAsync(events, deletions, documentsToEmbed, ct);
         await GenerateAndStoreEmbeddingsAsync(documentsToEmbed, ct);
         await ProcessDeletionsAsync(deletions, ct);
     }
 
     private async Task ResolveEntitiesAsync(
-        IReadOnlyList<OutboxEntry> entries,
+        IReadOnlyList<EntityChangedEvent> events,
         List<(string EntityType, Guid EntityId)> deletions,
-        List<(OutboxEntry Entry, object Entity, string Text)> documentsToEmbed,
+        List<(EntityChangedEvent Event, object Entity, string Text)> documentsToEmbed,
         CancellationToken ct)
     {
-        foreach (var entry in entries)
+        foreach (var evt in events)
         {
-            if (entry.Operation == "Deleted")
+            if (evt.Operation == "Deleted")
             {
-                deletions.Add((entry.EntityType, entry.EntityId));
+                deletions.Add((evt.EntityType, evt.EntityId));
                 continue;
             }
 
             try
             {
-                var entity = await _entityResolver.ResolveAsync(entry.EntityType, entry.EntityId, ct);
+                var entity = await _entityResolver.ResolveAsync(evt.EntityType, evt.EntityId, ct);
                 if (entity is null)
                 {
                     _logger.LogError("Entity {EntityType}/{EntityId} not found, skipping",
-                        entry.EntityType, entry.EntityId);
+                        evt.EntityType, evt.EntityId);
                     continue;
                 }
 
-                var text = await _strategyFactory.CompileTextAsync(entry.EntityType, entity, ct);
+                var text = await _strategyFactory.CompileTextAsync(evt.EntityType, entity, ct);
                 if (string.IsNullOrWhiteSpace(text))
                 {
                     _logger.LogError("No embedding text for {EntityType}/{EntityId} (likely archived/filtered)",
-                        entry.EntityType, entry.EntityId);
+                        evt.EntityType, evt.EntityId);
                     continue;
                 }
 
-                documentsToEmbed.Add((entry, entity, text));
+                documentsToEmbed.Add((evt, entity, text));
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error processing entity {EntityType}/{EntityId}",
-                    entry.EntityType, entry.EntityId);
+                    evt.EntityType, evt.EntityId);
             }
         }
     }
 
     private async Task GenerateAndStoreEmbeddingsAsync(
-        List<(OutboxEntry Entry, object Entity, string Text)> documentsToEmbed,
+        List<(EntityChangedEvent Event, object Entity, string Text)> documentsToEmbed,
         CancellationToken ct)
     {
         if (documentsToEmbed.Count == 0)
@@ -101,20 +101,20 @@ public class EmbeddingProcessor(
     }
 
     private List<EmbeddingDocument> BuildDocuments(
-        List<(OutboxEntry Entry, object Entity, string Text)> documentsToEmbed,
+        List<(EntityChangedEvent Event, object Entity, string Text)> documentsToEmbed,
         IReadOnlyList<float[]> embeddings)
     {
         var documents = new List<EmbeddingDocument>();
 
         for (var i = 0; i < documentsToEmbed.Count; i++)
         {
-            var (entry, entity, text) = documentsToEmbed[i];
+            var (evt, entity, text) = documentsToEmbed[i];
             var embedding = embeddings[i];
 
             if (embedding.Length == 0)
             {
                 _logger.LogError("Empty embedding returned for {EntityType}/{EntityId}",
-                    entry.EntityType, entry.EntityId);
+                    evt.EntityType, evt.EntityId);
                 continue;
             }
 
@@ -122,11 +122,11 @@ public class EmbeddingProcessor(
             if (string.IsNullOrEmpty(userId))
             {
                 _logger.LogError("Could not determine UserId for {EntityType}/{EntityId}",
-                    entry.EntityType, entry.EntityId);
+                    evt.EntityType, evt.EntityId);
                 continue;
             }
 
-            documents.Add(CreateDocument(entry, text, embedding, userId));
+            documents.Add(CreateDocument(evt, text, embedding, userId));
         }
 
         return documents;
@@ -152,17 +152,17 @@ public class EmbeddingProcessor(
     }
 
     private static EmbeddingDocument CreateDocument(
-        OutboxEntry entry,
+        EntityChangedEvent evt,
         string embeddingText,
         float[] embedding,
         string userId)
     {
         return new EmbeddingDocument
         {
-            Id = EmbeddingDocument.CreateId(entry.EntityType, entry.EntityId),
+            Id = EmbeddingDocument.CreateId(evt.EntityType, evt.EntityId),
             UserId = userId,
-            EntityType = entry.EntityType,
-            EntityId = entry.EntityId,
+            EntityType = evt.EntityType,
+            EntityId = evt.EntityId,
             EmbeddingText = embeddingText,
             Embedding = embedding,
             UpdatedAt = DateTime.UtcNow,
