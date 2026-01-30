@@ -61,6 +61,8 @@ var serviceBusOptions = builder.Configuration
     .GetSection(ServiceBusOptions.SectionName)
     .Get<ServiceBusOptions>() ?? new ServiceBusOptions();
 
+builder.Services.AddMessaging(builder.Configuration);
+
 // When Service Bus is enabled, CAP consumers handle message processing automatically
 
 // Add CORS for React SPA

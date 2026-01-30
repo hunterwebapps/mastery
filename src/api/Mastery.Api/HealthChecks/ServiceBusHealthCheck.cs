@@ -25,18 +25,6 @@ public sealed class ServiceBusHealthCheck : IHealthCheck
         HealthCheckContext context,
         CancellationToken cancellationToken = default)
     {
-        if (!_options.Enabled)
-        {
-            return Task.FromResult(HealthCheckResult.Healthy(
-                "Service Bus is disabled, using SQL-based outbox pattern"));
-        }
-
-        if (string.IsNullOrEmpty(_options.ConnectionString))
-        {
-            return Task.FromResult(HealthCheckResult.Unhealthy(
-                "Service Bus is enabled but connection string is not configured"));
-        }
-
         // For a more thorough health check, you could:
         // 1. Create a ServiceBusClient and verify connection
         // 2. Send a test message to a health check queue

@@ -9,12 +9,6 @@ public sealed class ServiceBusOptions
     public const string SectionName = "ServiceBus";
 
     /// <summary>
-    /// Whether Service Bus messaging is enabled.
-    /// When false, the legacy SQL-based outbox pattern is used.
-    /// </summary>
-    public bool Enabled { get; set; }
-
-    /// <summary>
     /// Azure Service Bus connection string.
     /// </summary>
     public string ConnectionString { get; set; } = string.Empty;
