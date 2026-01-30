@@ -9,21 +9,15 @@ namespace Mastery.Infrastructure.Services.Rules;
 /// Tier 0 rules engine that evaluates all registered deterministic rules
 /// and aggregates results for escalation decisions.
 /// </summary>
-public sealed class DeterministicRulesEngine : IDeterministicRulesEngine
+public sealed class DeterministicRulesEngine(
+    IEnumerable<IDeterministicRule> _rules,
+    ILogger<DeterministicRulesEngine> _logger)
+    : IDeterministicRulesEngine
 {
-    private readonly IEnumerable<IDeterministicRule> _rules;
-    private readonly ILogger<DeterministicRulesEngine> _logger;
-
-    public DeterministicRulesEngine(
-        IEnumerable<IDeterministicRule> rules,
-        ILogger<DeterministicRulesEngine> logger)
-    {
-        _rules = rules;
-        _logger = logger;
-    }
-
-    public IReadOnlyList<string> RegisteredRuleIds =>
-        _rules.Where(r => r.IsEnabled).Select(r => r.RuleId).ToList();
+    public IReadOnlyList<string> RegisteredRuleIds => _rules
+        .Where(r => r.IsEnabled)
+        .Select(r => r.RuleId)
+        .ToList();
 
     public async Task<RuleEvaluationResult> EvaluateAsync(
         UserStateSnapshot state,

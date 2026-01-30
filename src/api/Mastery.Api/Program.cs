@@ -130,7 +130,8 @@ builder.Services.AddScoped<MasteryDbSeeder>();
 
 // Health checks
 builder.Services.AddHealthChecks()
-    .AddCheck<ServiceBusHealthCheck>("service-bus", tags: ["messaging"]);
+    .AddCheck<ServiceBusHealthCheck>("service-bus", tags: ["messaging"])
+    .AddCheck<DlqHealthCheck>("dlq-monitor", tags: ["messaging", "ready"]);
 
 var app = builder.Build();
 

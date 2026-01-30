@@ -33,8 +33,10 @@ public static class DependencyInjection
         // Register signal routing service
         services.AddScoped<SignalRoutingService>();
 
-        // Register DLQ monitor as hosted service
-        services.AddHostedService<DlqMonitorService>();
+        // Register DLQ monitor as singleton (so health check can access it)
+        // and also as hosted service (so it runs in the background)
+        services.AddSingleton<DlqMonitorService>();
+        services.AddHostedService(sp => sp.GetRequiredService<DlqMonitorService>());
 
         // Get connection string for CAP storage
         var sqlConnectionString = configuration.GetConnectionString("MasteryDb")

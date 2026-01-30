@@ -73,13 +73,13 @@ public static class DependencyInjection
         services.AddScoped<IDerivedSignalDetector, DerivedSignalDetector>();
 
         // Tier 0 deterministic rules engine
-        services.AddScoped<IDeterministicRule, CapacityOverloadRule>();
+        services.AddScoped<IDeterministicRule, TaskCapacityOverloadRule>();
         services.AddScoped<IDeterministicRule, DeadlineProximityRule>();
-        services.AddScoped<IDeterministicRule, StreakBreakDetectionRule>();
-        services.AddScoped<IDeterministicRule, AdherenceThresholdRule>();
-        services.AddScoped<IDeterministicRule, EnergyMismatchRule>();
-        services.AddScoped<IDeterministicRule, StaleExperimentRule>();
-        services.AddScoped<IDeterministicRule, NoTop1SelectedRule>();
+        services.AddScoped<IDeterministicRule, HabitStreakBreakDetectionRule>();
+        services.AddScoped<IDeterministicRule, HabitAdherenceThresholdRule>();
+        services.AddScoped<IDeterministicRule, TaskEnergyMismatchRule>();
+        services.AddScoped<IDeterministicRule, ExperimentStaleRule>();
+        services.AddScoped<IDeterministicRule, CheckInNoTop1SelectedRule>();
         services.AddScoped<IDeterministicRule, CheckInMissingRule>();
         services.AddScoped<IDeterministicRule, GoalScoreboardIncompleteRule>();
         services.AddScoped<IDeterministicRule, TaskOverdueRule>();
