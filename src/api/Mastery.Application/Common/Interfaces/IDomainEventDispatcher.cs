@@ -1,3 +1,5 @@
+using Mastery.Domain.Common;
+
 namespace Mastery.Application.Common.Interfaces;
 
 /// <summary>
@@ -10,7 +12,8 @@ public interface IDomainEventDispatcher
     /// Dispatches all pending domain events from tracked entities.
     /// Continues dispatching until no new events are raised (handles cascading).
     /// </summary>
+    /// <param name="getTrackedEntities">Function that returns entities to collect domain events from.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A task representing the async operation.</returns>
-    Task DispatchEventsAsync(CancellationToken cancellationToken = default);
+    Task DispatchEventsAsync(Func<IEnumerable<BaseEntity>> getTrackedEntities, CancellationToken cancellationToken = default);
 }

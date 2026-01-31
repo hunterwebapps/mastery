@@ -74,7 +74,9 @@ public class MasteryDbContext(
     {
         // 1. Dispatch domain events BEFORE commit (handlers run within the same transaction)
         // This allows cascading events and ensures all changes are committed together
-        await _domainEventDispatcher.DispatchEventsAsync(cancellationToken);
+        await _domainEventDispatcher.DispatchEventsAsync(
+            () => ChangeTracker.Entries<BaseEntity>().Select(e => e.Entity),
+            cancellationToken);
 
         // 2. Collect Service Bus snapshots from all entities with domain events
         var entityChangeSnapshots = CollectServiceBusSnapshots();

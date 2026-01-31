@@ -10,20 +10,19 @@ namespace Mastery.Infrastructure.Data;
 /// Handles cascading events by looping until no new events are raised.
 /// </summary>
 public sealed class DomainEventDispatcher(
-    MasteryDbContext _dbContext,
     IPublisher _publisher,
     ILogger<DomainEventDispatcher> _logger)
     : IDomainEventDispatcher
 {
     private const int MaxDispatchIterations = 10;
 
-    public async Task DispatchEventsAsync(CancellationToken cancellationToken = default)
+    public async Task DispatchEventsAsync(Func<IEnumerable<BaseEntity>> getTrackedEntities, CancellationToken cancellationToken = default)
     {
         var iteration = 0;
 
         while (iteration < MaxDispatchIterations)
         {
-            var domainEvents = CollectDomainEvents();
+            var domainEvents = CollectDomainEvents(getTrackedEntities);
 
             if (domainEvents.Count == 0)
                 break;
@@ -50,16 +49,16 @@ public sealed class DomainEventDispatcher(
         }
     }
 
-    private List<INotification> CollectDomainEvents()
+    private static List<INotification> CollectDomainEvents(Func<IEnumerable<BaseEntity>> getTrackedEntities)
     {
         var domainEvents = new List<INotification>();
 
-        foreach (var entry in _dbContext.ChangeTracker.Entries<BaseEntity>())
+        foreach (var entity in getTrackedEntities())
         {
-            if (entry.Entity.DomainEvents.Count > 0)
+            if (entity.DomainEvents.Count > 0)
             {
-                domainEvents.AddRange(entry.Entity.DomainEvents);
-                entry.Entity.ClearDomainEvents();
+                domainEvents.AddRange(entity.DomainEvents);
+                entity.ClearDomainEvents();
             }
         }
 
