@@ -294,6 +294,13 @@ internal static class ProjectGenerationPrompt
             - For Edit: only include fields that need to change
             - ALWAYS include _summary in actionPayload - this is shown to the user before they accept
             - _summary should be concise (under 60 chars) and describe exactly what will happen
+
+            ## Historical Context Usage
+            If related project history is provided:
+            - Use successful stuck project fixes as templates
+            - Avoid next action suggestions similar to ones that were dismissed
+            - Reference past project completion patterns for milestone suggestions
+            - Consider goal linking patterns that worked for similar projects
             """;
     }
 
@@ -475,8 +482,8 @@ internal static class ProjectGenerationPrompt
         sb.AppendLine("- Do NOT invent or hallucinate entity IDs. Only use IDs that appear in the lists above.");
         sb.AppendLine();
 
-        // Add RAG historical context if available
-        RagContextFormatter.AppendIfPresent(sb, ragContext, "Related Project History");
+        // Add RAG historical context BEFORE generating - inform recommendations
+        RagContextFormatter.AppendForGeneration(sb, ragContext, "Project", today);
 
         sb.AppendLine("Generate recommendations for each intervention plan item assigned to you.");
 

@@ -100,14 +100,18 @@ internal sealed class OpenAiLlmOrchestrator(
         // ── Stage 2: Recommendation Strategy ───────────────────────────
         _logger.LogInformation("Stage 2: Building recommendation strategy");
 
-        var strategy = await RunStage2StrategyAsync(assessment, context, state.Profile, strategyRag, cancellationToken);
-        if (strategy is null)
+        var stage2Result = await RunStage2StrategyAsync(
+            assessment, context, state.Profile, strategyRag, state.Today, state.UserId, cancellationToken);
+        trace.AgenticSearchMetrics = stage2Result.Metrics;
+
+        if (stage2Result.Strategy is null)
         {
             _logger.LogWarning("Stage 2 failed — returning empty results");
             return new RecommendationOrchestrationResult(
                 SelectedCandidates: [],
                 SelectionMethod: "OpenAI-Stage2-Failed");
         }
+        var strategy = stage2Result.Strategy;
         trace.Strategy = strategy;
 
         // ── Stage 3: Parallel Domain Generation ────────────────────────
@@ -175,17 +179,46 @@ internal sealed class OpenAiLlmOrchestrator(
     // Stage 2
     // ─────────────────────────────────────────────────────────────────
 
-    private async Task<RecommendationStrategy?> RunStage2StrategyAsync(
+    private record Stage2Result(
+        RecommendationStrategy? Strategy,
+        AgenticSearchMetrics Metrics);
+
+    private async Task<Stage2Result> RunStage2StrategyAsync(
         SituationalAssessment assessment,
         RecommendationContext context,
         UserProfileSnapshot? profile,
         RagContext? ragContext,
+        DateOnly today,
+        string userId,
+        CancellationToken cancellationToken)
+    {
+        // Check if agentic search is enabled
+        var ragOptions = _ragOptions.Value;
+        if (!ragOptions.EnableAgenticSearch)
+        {
+            // Standard path: no tool calling
+            var strategy = await RunStage2StrategyStandardAsync(
+                assessment, context, profile, ragContext, today, cancellationToken);
+            return new Stage2Result(strategy, new AgenticSearchMetrics { Enabled = false });
+        }
+
+        // Agentic path: with search_history tool
+        return await RunStage2StrategyWithToolsAsync(
+            assessment, context, profile, ragContext, today, userId, cancellationToken);
+    }
+
+    private async Task<RecommendationStrategy?> RunStage2StrategyStandardAsync(
+        SituationalAssessment assessment,
+        RecommendationContext context,
+        UserProfileSnapshot? profile,
+        RagContext? ragContext,
+        DateOnly today,
         CancellationToken cancellationToken)
     {
         var json = await CallOpenAiAsync(
             StrategyPrompt.Model,
             StrategyPrompt.BuildSystemPrompt(context),
-            StrategyPrompt.BuildUserPrompt(assessment, context, profile, ragContext),
+            StrategyPrompt.BuildUserPrompt(assessment, context, profile, ragContext, today),
             StrategyPrompt.SchemaName,
             StrategyPrompt.ResponseSchema,
             cancellationToken);
@@ -200,6 +233,214 @@ internal sealed class OpenAiLlmOrchestrator(
             _logger.LogWarning(ex, "Failed to deserialize Stage 2 strategy response");
             return null;
         }
+    }
+
+    private async Task<Stage2Result> RunStage2StrategyWithToolsAsync(
+        SituationalAssessment assessment,
+        RecommendationContext context,
+        UserProfileSnapshot? profile,
+        RagContext? ragContext,
+        DateOnly today,
+        string userId,
+        CancellationToken cancellationToken)
+    {
+        var metrics = new AgenticSearchMetrics { Enabled = true };
+
+        var messages = new List<ChatMessage>
+        {
+            new SystemChatMessage(StrategyPrompt.BuildSystemPrompt(context)),
+            new UserChatMessage(StrategyPrompt.BuildUserPrompt(assessment, context, profile, ragContext, today))
+        };
+
+        var completionOptions = new ChatCompletionOptions
+        {
+#pragma warning disable OPENAI001
+            ReasoningEffortLevel = ChatReasoningEffortLevel.Medium,
+#pragma warning restore OPENAI001
+            MaxOutputTokenCount = _options.Value.MaxOutputTokens,
+            ResponseFormat = ChatResponseFormat.CreateJsonSchemaFormat(
+                jsonSchemaFormatName: StrategyPrompt.SchemaName,
+                jsonSchema: StrategyPrompt.ResponseSchema,
+                jsonSchemaIsStrict: true)
+        };
+
+        // Add search_history tool
+        foreach (var tool in OpenAiLlmOrchestratorTools.StrategyTools)
+            completionOptions.Tools.Add(tool);
+        completionOptions.ToolChoice = ChatToolChoice.CreateAutoChoice();
+
+        var client = new ChatClient(StrategyPrompt.Model, _options.Value.ApiKey);
+        var searchCallCount = 0;
+        var maxSearchCalls = _ragOptions.Value.MaxAgenticSearchCalls;
+        var turnCount = 0;
+        const int maxTurns = 5; // Safety limit to prevent infinite loops
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(TimeSpan.FromSeconds(_options.Value.TimeoutSeconds * 2)); // Extended timeout for tool calls
+
+        try
+        {
+            while (turnCount < maxTurns)
+            {
+                turnCount++;
+                var completion = await client.CompleteChatAsync(messages, completionOptions, cts.Token);
+                var response = completion.Value;
+
+                // If finished with no tool calls, parse and return
+                if (response.FinishReason == ChatFinishReason.Stop)
+                {
+                    var json = response.Content
+                        .Where(p => p.Kind == ChatMessageContentPartKind.Text)
+                        .Select(p => p.Text)
+                        .FirstOrDefault();
+
+                    _logger.LogInformation(
+                        "Stage 2 completed with tools: SearchCalls={SearchCalls}, Turns={Turns}",
+                        searchCallCount, turnCount);
+
+                    metrics.SearchCallCount = searchCallCount;
+
+                    if (string.IsNullOrWhiteSpace(json))
+                    {
+                        _logger.LogWarning("Stage 2 returned empty content after tool calls");
+                        return new Stage2Result(null, metrics);
+                    }
+
+                    try
+                    {
+                        var strategy = JsonSerializer.Deserialize<RecommendationStrategy>(json, JsonOptions);
+                        return new Stage2Result(strategy, metrics);
+                    }
+                    catch (JsonException ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to deserialize Stage 2 strategy response after tool calls");
+                        return new Stage2Result(null, metrics);
+                    }
+                }
+
+                // Handle tool calls
+                if (response.FinishReason == ChatFinishReason.ToolCalls)
+                {
+                    // Add assistant message with tool calls to conversation
+                    messages.Add(new AssistantChatMessage(response));
+
+                    foreach (var toolCall in response.ToolCalls)
+                    {
+                        if (toolCall.FunctionName == "search_history")
+                        {
+                            var toolResult = await HandleSearchHistoryToolAsync(
+                                toolCall, userId, today, searchCallCount, maxSearchCalls, cts.Token);
+                            messages.Add(new ToolChatMessage(toolCall.Id, toolResult.Content));
+
+                            if (toolResult.WasExecuted)
+                            {
+                                searchCallCount++;
+                                metrics.SearchQueries.Add(toolResult.Query ?? "");
+                            }
+                        }
+                        else
+                        {
+                            // Unknown tool
+                            _logger.LogWarning("Unknown tool call: {ToolName}", toolCall.FunctionName);
+                            messages.Add(new ToolChatMessage(toolCall.Id, "Unknown tool. Please proceed with available context."));
+                        }
+                    }
+                }
+                else
+                {
+                    // Unexpected finish reason
+                    _logger.LogWarning("Stage 2 unexpected finish reason: {Reason}", response.FinishReason);
+                    metrics.SearchCallCount = searchCallCount;
+                    return new Stage2Result(null, metrics);
+                }
+            }
+
+            _logger.LogWarning("Stage 2 exceeded max turns ({MaxTurns})", maxTurns);
+            metrics.SearchCallCount = searchCallCount;
+            return new Stage2Result(null, metrics);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("Stage 2 with tools timed out after {Turns} turns", turnCount);
+            metrics.SearchCallCount = searchCallCount;
+            return new Stage2Result(null, metrics);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Stage 2 with tools failed after {Turns} turns", turnCount);
+            metrics.SearchCallCount = searchCallCount;
+            return new Stage2Result(null, metrics);
+        }
+    }
+
+    private async Task<(string Content, bool WasExecuted, string? Query)> HandleSearchHistoryToolAsync(
+        ChatToolCall toolCall,
+        string userId,
+        DateOnly today,
+        int currentSearchCount,
+        int maxSearchCalls,
+        CancellationToken cancellationToken)
+    {
+        // Check if we've exceeded the search limit
+        if (currentSearchCount >= maxSearchCalls)
+        {
+            _logger.LogDebug("search_history call rejected: limit reached ({Current}/{Max})",
+                currentSearchCount, maxSearchCalls);
+            return ("Search limit reached. Please proceed with available context.", false, null);
+        }
+
+        // Parse arguments
+        SearchHistoryArgs args;
+        try
+        {
+            args = JsonSerializer.Deserialize<SearchHistoryArgs>(
+                toolCall.FunctionArguments.ToString(),
+                JsonOptions) ?? new SearchHistoryArgs("");
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Failed to parse search_history arguments");
+            return ("Invalid arguments. Please provide a valid query string.", false, null);
+        }
+
+        if (string.IsNullOrWhiteSpace(args.Query))
+        {
+            return ("Empty query. Please provide a search query.", false, null);
+        }
+
+        _logger.LogInformation(
+            "search_history tool called: query='{Query}', entityTypes={EntityTypes}, maxResults={MaxResults}",
+            args.Query,
+            args.EntityTypes is not null ? string.Join(",", args.EntityTypes) : "all",
+            args.MaxResults ?? 5);
+
+        // Execute the search
+        var additionalContext = await _ragRetriever.SearchAsync(
+            userId,
+            args.Query,
+            args.EntityTypes,
+            args.MaxResults ?? 5,
+            cancellationToken);
+
+        if (additionalContext is null || additionalContext.Items.Count == 0)
+        {
+            _logger.LogDebug("search_history returned no results for query: {Query}", args.Query);
+            return ("No additional results found matching your query.", true, args.Query);
+        }
+
+        // Format the results for the LLM
+        var resultText = RagContextFormatter.FormatForStrategy(additionalContext, today)
+            ?? "No relevant context found.";
+
+        _logger.LogInformation(
+            "search_history returned {Count} results for query: {Query}",
+            additionalContext.Items.Count, args.Query);
+
+        return (resultText, true, args.Query);
     }
 
     // ─────────────────────────────────────────────────────────────────
@@ -634,5 +875,20 @@ internal sealed class OpenAiLlmOrchestrator(
 
         [JsonPropertyName("generationRag")]
         public List<RagContext>? GenerationRag { get; set; }
+
+        [JsonPropertyName("agenticSearchMetrics")]
+        public AgenticSearchMetrics? AgenticSearchMetrics { get; set; }
+    }
+
+    private sealed class AgenticSearchMetrics
+    {
+        [JsonPropertyName("enabled")]
+        public bool Enabled { get; set; }
+
+        [JsonPropertyName("searchCallCount")]
+        public int SearchCallCount { get; set; }
+
+        [JsonPropertyName("searchQueries")]
+        public List<string> SearchQueries { get; set; } = [];
     }
 }

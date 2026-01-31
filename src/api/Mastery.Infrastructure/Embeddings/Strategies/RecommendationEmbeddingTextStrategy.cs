@@ -14,12 +14,8 @@ public sealed class RecommendationEmbeddingTextStrategy : IEmbeddingTextStrategy
 {
     public Task<string?> CompileTextAsync(Recommendation entity, CancellationToken ct)
     {
-        // Don't embed expired or executed recommendations - they're historical
-        if (entity.Status is RecommendationStatus.Expired or RecommendationStatus.Executed)
-        {
-            return Task.FromResult<string?>(null);
-        }
-
+        // Embed all recommendation statuses including Expired/Executed for RAG learning.
+        // Previously excluded these, but they contain valuable outcome information.
         var sb = new StringBuilder();
 
         // Build leading summary: "{Type}: {Title} - {ActionSummary}"
@@ -36,6 +32,9 @@ public sealed class RecommendationEmbeddingTextStrategy : IEmbeddingTextStrategy
         sb.AppendLine($"Context: {FormatContext(entity.Context)}");
         sb.AppendLine($"Status: {FormatStatus(entity.Status)}");
 
+        // Add clear outcome classification for RAG learning
+        sb.AppendLine($"Outcome: {FormatOutcome(entity)}");
+
         // Target information
         sb.AppendLine();
         sb.AppendLine($"Target: {EmbeddingFormatHelper.FormatEnum(entity.Target.Kind)}");
@@ -50,20 +49,48 @@ public sealed class RecommendationEmbeddingTextStrategy : IEmbeddingTextStrategy
         sb.AppendLine();
         sb.AppendLine($"Rationale: {entity.Rationale}");
 
-        // Include dismiss reason if available (useful for learning what doesn't work)
+        // Include dismiss reason if available (critical for learning what doesn't work)
         if (entity.Status == RecommendationStatus.Dismissed && !string.IsNullOrWhiteSpace(entity.DismissReason))
         {
             sb.AppendLine();
             sb.AppendLine($"Dismiss reason: {entity.DismissReason}");
         }
 
-        // Domain keywords for semantic search
+        // Include execution notes for completed recommendations
+        if (entity.Status == RecommendationStatus.Executed)
+        {
+            sb.AppendLine();
+            sb.AppendLine("Execution status: User followed through on this recommendation");
+        }
+
+        // Domain keywords for semantic search - include outcome keywords
+        var outcomeKeywords = entity.Status switch
+        {
+            RecommendationStatus.Accepted => "accepted successful worked effective",
+            RecommendationStatus.Dismissed => "dismissed rejected avoided failed",
+            RecommendationStatus.Executed => "executed completed followed through successful",
+            RecommendationStatus.Expired => "expired ignored missed",
+            _ => ""
+        };
+
         EmbeddingFormatHelper.AppendKeywords(sb,
             "recommendation", "suggestion", "next best action", "intervention",
-            "coaching", "advice", "nudge", "prompt", "guidance");
+            "coaching", "advice", "nudge", "prompt", "guidance", outcomeKeywords);
 
         return Task.FromResult<string?>(sb.ToString());
     }
+
+    private static string FormatOutcome(Recommendation entity) => entity.Status switch
+    {
+        RecommendationStatus.Pending => "Pending user response",
+        RecommendationStatus.Accepted => "Accepted by user",
+        RecommendationStatus.Dismissed => string.IsNullOrEmpty(entity.DismissReason)
+            ? "Dismissed by user"
+            : $"Dismissed by user: {entity.DismissReason}",
+        RecommendationStatus.Executed => "Executed successfully",
+        RecommendationStatus.Expired => "Expired (no response within window)",
+        _ => "Unknown"
+    };
 
     private static string FormatRecommendationType(RecommendationType type) => type switch
     {

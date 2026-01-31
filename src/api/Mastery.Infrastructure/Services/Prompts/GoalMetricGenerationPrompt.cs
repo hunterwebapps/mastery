@@ -421,6 +421,13 @@ internal static class GoalMetricGenerationPrompt
             - Connect everything back to the user's goals and momentum
             - ALWAYS include _summary in actionPayload - this is shown to the user before they accept
             - _summary should be concise (under 60 chars) and describe exactly what will happen
+
+            ## Historical Context Usage
+            If related goal/metric history is provided:
+            - Use successful scoreboard configurations as templates
+            - Avoid metric suggestions similar to ones that were dismissed
+            - Reference target values that worked well for similar goals
+            - Consider past metric observation patterns for reminder timing
             """;
     }
 
@@ -592,8 +599,8 @@ internal static class GoalMetricGenerationPrompt
         sb.AppendLine("- Do NOT invent or hallucinate entity IDs. Only use IDs that appear in the lists above.");
         sb.AppendLine();
 
-        // Add RAG historical context if available
-        RagContextFormatter.AppendIfPresent(sb, ragContext, "Related Goal/Metric History");
+        // Add RAG historical context BEFORE generating - inform recommendations
+        RagContextFormatter.AppendForGeneration(sb, ragContext, "GoalMetric", DateOnly.FromDateTime(DateTime.UtcNow));
 
         sb.AppendLine("Generate recommendations for each intervention plan item assigned to you.");
         return sb.ToString();

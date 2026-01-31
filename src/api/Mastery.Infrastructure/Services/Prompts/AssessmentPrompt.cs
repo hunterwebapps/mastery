@@ -80,6 +80,14 @@ internal static class AssessmentPrompt
             Be specific and evidence-based. Reference actual numbers (adherence %, streak counts, task counts).
             Consider user's values, roles, and season context when assessing alignment and priorities.
             Do NOT make recommendations — that comes later. Focus purely on understanding the situation.
+
+            ## Using Historical Context
+            If historical patterns are provided, use them to:
+            - Identify recurring themes (e.g., "energy drops every Monday", "tasks often reschedule on Fridays")
+            - Note what interventions have worked or failed in similar situations
+            - Detect if current situation matches a past pattern
+            - Reference specific historical items when they inform your assessment
+            This context helps you make more accurate assessments based on the user's actual history.
             """);
 
         sb.AppendLine();
@@ -96,6 +104,10 @@ internal static class AssessmentPrompt
         sb.AppendLine();
 
         SerializeProfile(sb, state.Profile);
+
+        // Add RAG historical context early - informs assessment of current state
+        RagContextFormatter.AppendForAssessment(sb, ragContext, state.Today);
+
         SerializeGoals(sb, state.Goals);
         SerializeHabits(sb, state.Habits);
         SerializeTasks(sb, state.Tasks, state.Today);
@@ -103,9 +115,6 @@ internal static class AssessmentPrompt
         SerializeExperiments(sb, state.Experiments);
         SerializeCheckIns(sb, state.RecentCheckIns);
         SerializeMetrics(sb, state.MetricDefinitions);
-
-        // Add RAG historical context if available
-        RagContextFormatter.AppendIfPresent(sb, ragContext, "Historical Patterns");
 
         return sb.ToString();
     }

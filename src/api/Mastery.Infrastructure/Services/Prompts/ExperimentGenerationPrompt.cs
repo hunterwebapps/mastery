@@ -291,6 +291,14 @@ internal static class ExperimentGenerationPrompt
             - For Archive: use when experiment is stale or no longer aligned with goals
             - ALWAYS include _summary in actionPayload - this is shown to the user before they accept
             - _summary should be concise (under 60 chars) and describe exactly what will happen
+
+            ## Historical Context Usage
+            If related experiment history is provided:
+            - LEARN from completed experiments - incorporate their key findings
+            - AVOID suggesting similar experiments to ones that failed or were inconclusive
+            - Reference successful experiment outcomes when designing new hypotheses
+            - Consider abandoned experiments as signals of what didn't work for this user
+            - Build on the methodology of successful experiments
             """;
     }
 
@@ -442,8 +450,8 @@ internal static class ExperimentGenerationPrompt
         }
         sb.AppendLine();
 
-        // Add RAG historical context if available
-        RagContextFormatter.AppendIfPresent(sb, ragContext, "Related Experiment History");
+        // Add RAG historical context BEFORE generating - learn from past experiments
+        RagContextFormatter.AppendForGeneration(sb, ragContext, "Experiment", DateOnly.FromDateTime(DateTime.UtcNow));
 
         sb.AppendLine("Generate recommendations for each intervention plan item assigned to you.");
         return sb.ToString();

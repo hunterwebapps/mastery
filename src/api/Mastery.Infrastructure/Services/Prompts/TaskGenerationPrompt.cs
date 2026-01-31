@@ -286,6 +286,13 @@ internal static class TaskGenerationPrompt
             - For Remove: use when a task is stale (>14 days no activity) or no longer relevant
             - ALWAYS include _summary in actionPayload - this is shown to the user before they accept
             - _summary should be concise (under 60 chars) and describe exactly what will happen
+
+            ## Historical Context Usage
+            If related task history is provided:
+            - Use successful past recommendations as templates for similar situations
+            - Avoid scheduling patterns that led to dismissals or reschedules
+            - Reference past task completion patterns when suggesting timing
+            - Maintain consistency with recently accepted recommendations
             """;
     }
 
@@ -407,8 +414,8 @@ internal static class TaskGenerationPrompt
 
         sb.AppendLine();
 
-        // Add RAG historical context if available
-        RagContextFormatter.AppendIfPresent(sb, ragContext, "Related Task History");
+        // Add RAG historical context BEFORE generating - inform recommendations
+        RagContextFormatter.AppendForGeneration(sb, ragContext, "Task", today);
 
         sb.AppendLine("Generate recommendations for each intervention plan item assigned to you.");
 

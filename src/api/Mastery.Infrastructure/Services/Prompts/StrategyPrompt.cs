@@ -95,6 +95,34 @@ internal static class StrategyPrompt
             - Do NOT suggest both HabitFromLeadMetricSuggestion AND an ExperimentRecommendation about the same behavior — one is about creating structure, the other about testing; pick one
             - Do NOT suggest multiple recommendations targeting the same entity (e.g., two ProjectStuckFix for the same project)
             - When in doubt, prefer the more specific intervention over the general one
+
+            ## Learning from Past Interventions
+            If past intervention outcomes are provided:
+            - AVOID suggesting interventions similar to recently dismissed ones (within 14 days)
+            - BUILD ON interventions that were accepted and effective
+            - Note dismiss reasons to understand user preferences and patterns
+            - If an experiment succeeded, consider reinforcing its learnings
+            - If a similar recommendation was dismissed with a reason, choose a different approach
+
+            CONFLICT AVOIDANCE (with history):
+            - If a similar recommendation was dismissed within 14 days, do NOT repeat it
+            - If an experiment is currently active, do NOT suggest overlapping experiments
+            - If a recommendation is pending, do NOT duplicate it
+
+            ## Historical Context Search (if available)
+            You may have access to a search_history tool that can retrieve additional historical context
+            from the user's data. Pre-fetched context is provided in the user message.
+
+            Use the search_history tool ONLY when:
+            - The pre-fetched context doesn't contain relevant past interventions for your decision
+            - You need specific examples of what worked/failed for a particular behavior
+            - You want to check if a similar intervention was recently dismissed
+
+            DO NOT use the search_history tool when:
+            - Pre-fetched context already contains sufficient information
+            - You're just curious (each call adds latency)
+
+            Maximum 2 search calls per request. Most strategy decisions should NOT require additional search.
             """);
 
         sb.AppendLine();
@@ -109,7 +137,8 @@ internal static class StrategyPrompt
         SituationalAssessment assessment,
         RecommendationContext context,
         UserProfileSnapshot? profile = null,
-        RagContext? ragContext = null)
+        RagContext? ragContext = null,
+        DateOnly? today = null)
     {
         var sb = new StringBuilder();
 
@@ -133,6 +162,9 @@ internal static class StrategyPrompt
             sb.AppendLine();
         }
 
+        // Add RAG historical context BEFORE assessment - learning context for strategy decisions
+        RagContextFormatter.AppendForStrategy(sb, ragContext, today ?? DateOnly.FromDateTime(DateTime.UtcNow));
+
         sb.AppendLine("# Situational Assessment (from Stage 1)");
         sb.AppendLine(JsonSerializer.Serialize(assessment, new JsonSerializerOptions
         {
@@ -140,9 +172,6 @@ internal static class StrategyPrompt
             WriteIndented = true
         }));
         sb.AppendLine();
-
-        // Add RAG historical context if available
-        RagContextFormatter.AppendIfPresent(sb, ragContext, "Past Interventions");
 
         sb.AppendLine($"# Current Context: {context}");
         sb.AppendLine("Produce your strategic intervention plan.");

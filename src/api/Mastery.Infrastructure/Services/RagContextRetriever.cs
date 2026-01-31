@@ -32,6 +32,17 @@ internal interface IRagContextRetriever
         IReadOnlyList<InterventionPlanItem> interventions,
         UserStateSnapshot state,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Performs a direct semantic search (for tool-invoked retrieval).
+    /// Used by the search_history tool in agentic RAG mode.
+    /// </summary>
+    Task<RagContext?> SearchAsync(
+        string userId,
+        string query,
+        string[]? entityTypes = null,
+        int maxResults = 5,
+        CancellationToken ct = default);
 }
 
 /// <summary>
@@ -102,18 +113,57 @@ internal sealed class RagContextRetriever(
     {
         var options = _options.Value;
 
-        var queryText = BuildGenerationQuery(domain, assessment, interventions);
+        var queryText = BuildGenerationQuery(domain, assessment, interventions, state);
         if (string.IsNullOrWhiteSpace(queryText))
         {
             _logger.LogDebug("No generation query generated for domain {Domain}, skipping RAG", domain);
             return null;
         }
 
+        // Use domain-specific config if available, otherwise fall back to default
+        var stageOptions = options.GenerationByDomain.TryGetValue(domain, out var domainOpts)
+            ? domainOpts
+            : options.Generation;
+
         return await RetrieveContextAsync(
             state.UserId,
             queryText,
             RagContextStage.Generation,
-            options.Generation,
+            stageOptions,
+            ct);
+    }
+
+    /// <summary>
+    /// Performs a direct semantic search (for tool-invoked retrieval).
+    /// Used by the search_history tool in agentic RAG mode.
+    /// </summary>
+    public async Task<RagContext?> SearchAsync(
+        string userId,
+        string query,
+        string[]? entityTypes = null,
+        int maxResults = 5,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            _logger.LogDebug("Empty search query, returning null");
+            return null;
+        }
+
+        // Clamp maxResults to reasonable bounds
+        maxResults = Math.Clamp(maxResults, 1, 10);
+
+        var stageOptions = new RagStageOptions
+        {
+            TopK = maxResults,
+            EntityTypes = entityTypes
+        };
+
+        return await RetrieveContextAsync(
+            userId,
+            query,
+            RagContextStage.Strategy, // Use Strategy stage for formatting
+            stageOptions,
             ct);
     }
 
@@ -126,6 +176,7 @@ internal sealed class RagContextRetriever(
     /// - Energy trends from recent check-ins
     /// - Capacity signals
     /// - Recent blocker patterns
+    /// - Temporal weighting for recency
     /// </summary>
     private static string BuildAssessmentQuery(UserStateSnapshot state, RecommendationContext context)
     {
@@ -135,34 +186,45 @@ internal sealed class RagContextRetriever(
         sb.Append(HumanizeContext(context));
         sb.Append(' ');
 
-        // Add energy trend from recent check-ins
+        // Add temporal recency keywords for recent activity
         var recentCheckIns = state.RecentCheckIns.OrderByDescending(c => c.Date).Take(3).ToList();
+        if (recentCheckIns.Any(c => c.Date > state.Today.AddDays(-3)))
+            sb.Append("recent current this week ");
+
+        // Add energy trend from recent check-ins
         if (recentCheckIns.Count > 0)
         {
             var avgEnergy = recentCheckIns.Where(c => c.EnergyLevel.HasValue).Average(c => c.EnergyLevel!.Value);
             if (avgEnergy < 2.5)
-                sb.Append("low energy fatigue tired ");
+                sb.Append("low energy fatigue tired depleted burnout ");
             else if (avgEnergy > 3.5)
-                sb.Append("high energy motivated productive ");
+                sb.Append("high energy motivated productive momentum ");
             else
-                sb.Append("moderate energy stable ");
+                sb.Append("moderate energy stable balanced ");
         }
 
         // Add capacity signals from tasks
         var todayTasks = state.Tasks.Where(t => t.ScheduledDate == state.Today).ToList();
         var totalMinutes = todayTasks.Sum(t => t.EstMinutes ?? 0);
         if (totalMinutes > 360)
-            sb.Append("overloaded heavy workload capacity ");
+            sb.Append("overloaded heavy workload capacity overwhelmed ");
         else if (totalMinutes < 60)
-            sb.Append("light day available capacity ");
+            sb.Append("light day available capacity underutilized ");
 
         // Add habit adherence signals
         var lowAdherenceHabits = state.Habits.Where(h => h.Adherence7Day < 0.5m).ToList();
         if (lowAdherenceHabits.Count > 0)
         {
-            sb.Append("habit adherence struggle ");
+            sb.Append("habit adherence struggle slipping ");
             foreach (var h in lowAdherenceHabits.Take(2))
                 sb.Append(h.Title).Append(' ');
+        }
+
+        // Add high-adherence signals (what's working)
+        var highAdherenceHabits = state.Habits.Where(h => h.Adherence7Day >= 0.8m).ToList();
+        if (highAdherenceHabits.Count > 0)
+        {
+            sb.Append("consistent streak working ");
         }
 
         // Add goal momentum signals
@@ -172,14 +234,20 @@ internal sealed class RagContextRetriever(
             sb.Append(g.Title).Append(' ');
         }
 
+        // Add check-in pattern signals
+        if (state.CheckInStreak == 0)
+            sb.Append("check-in gap missed ");
+        else if (state.CheckInStreak >= 7)
+            sb.Append("consistent check-in routine ");
+
         return sb.ToString().Trim();
     }
 
     /// <summary>
     /// Builds search query for Strategy stage based on:
-    /// - Assessment risks
-    /// - Patterns identified
+    /// - Assessment risks and patterns
     /// - Momentum state
+    /// - Outcome-aware keywords to learn from past interventions
     /// </summary>
     private static string BuildStrategyQuery(SituationalAssessment assessment, RecommendationContext context)
     {
@@ -192,6 +260,10 @@ internal sealed class RagContextRetriever(
         // Add capacity and momentum state
         sb.Append(assessment.CapacityStatus).Append(' ');
         sb.Append(assessment.OverallMomentum).Append(" momentum ");
+
+        // Add outcome-aware keywords to retrieve both successes and failures
+        sb.Append("successful accepted effective what worked ");
+        sb.Append("dismissed rejected failed avoided ");
 
         // Add key risks
         foreach (var risk in assessment.KeyRisks.Take(3))
@@ -216,15 +288,209 @@ internal sealed class RagContextRetriever(
             }
         }
 
+        // Add key strengths to reinforce what's working
+        foreach (var strength in assessment.KeyStrengths.Take(2))
+        {
+            sb.Append(strength).Append(' ');
+        }
+
         return sb.ToString().Trim();
     }
 
     /// <summary>
     /// Builds search query for Generation stage based on:
     /// - Domain-specific interventions
-    /// - Target entities
+    /// - Target entities from interventions
+    /// - Domain-specific keywords
     /// </summary>
     private static string BuildGenerationQuery(
+        string domain,
+        SituationalAssessment assessment,
+        IReadOnlyList<InterventionPlanItem> interventions,
+        UserStateSnapshot state)
+    {
+        return domain switch
+        {
+            "Task" => BuildTaskDomainQuery(assessment, interventions, state),
+            "Habit" => BuildHabitDomainQuery(assessment, interventions, state),
+            "Experiment" => BuildExperimentDomainQuery(assessment, interventions),
+            "GoalMetric" => BuildGoalMetricDomainQuery(assessment, interventions, state),
+            "Project" => BuildProjectDomainQuery(assessment, interventions, state),
+            _ => BuildGenericDomainQuery(domain, assessment, interventions)
+        };
+    }
+
+    private static string BuildTaskDomainQuery(
+        SituationalAssessment assessment,
+        IReadOnlyList<InterventionPlanItem> interventions,
+        UserStateSnapshot state)
+    {
+        var sb = new StringBuilder();
+        sb.Append("task scheduling priority defer breakdown next action ");
+
+        // Add intervention context
+        foreach (var intervention in interventions.Take(2))
+        {
+            sb.Append(intervention.Reasoning).Append(' ');
+        }
+
+        // Add specific entity references from interventions
+        var targetEntityIds = interventions
+            .Where(i => i.TargetEntityIds is { Count: > 0 })
+            .SelectMany(i => i.TargetEntityIds!)
+            .Take(3);
+        foreach (var id in targetEntityIds)
+        {
+            var task = state.Tasks.FirstOrDefault(t => t.Id.ToString() == id);
+            if (task != null)
+                sb.Append(task.Title).Append(' ');
+        }
+
+        // Add capacity context
+        sb.Append(assessment.CapacityStatus).Append(" capacity ");
+
+        // Add reschedule pattern keywords if relevant
+        var rescheduledTasks = state.Tasks.Where(t => t.RescheduleCount > 2).ToList();
+        if (rescheduledTasks.Count > 0)
+            sb.Append("rescheduled deferred stuck blocked ");
+
+        return sb.ToString().Trim();
+    }
+
+    private static string BuildHabitDomainQuery(
+        SituationalAssessment assessment,
+        IReadOnlyList<InterventionPlanItem> interventions,
+        UserStateSnapshot state)
+    {
+        var sb = new StringBuilder();
+        sb.Append("habit mode scale adherence streak routine consistency ");
+
+        // Add energy context for mode suggestions
+        sb.Append(assessment.EnergyTrend).Append(" energy ");
+
+        // Add intervention context
+        foreach (var intervention in interventions.Take(2))
+        {
+            sb.Append(intervention.Reasoning).Append(' ');
+        }
+
+        // Add specific habit references
+        var targetEntityIds = interventions
+            .Where(i => i.TargetEntityIds is { Count: > 0 })
+            .SelectMany(i => i.TargetEntityIds!)
+            .Take(3);
+        foreach (var id in targetEntityIds)
+        {
+            var habit = state.Habits.FirstOrDefault(h => h.Id.ToString() == id);
+            if (habit != null)
+                sb.Append(habit.Title).Append(' ');
+        }
+
+        // Add adherence pattern keywords
+        var lowAdherence = state.Habits.Where(h => h.Adherence7Day < 0.5m).ToList();
+        if (lowAdherence.Count > 0)
+            sb.Append("struggling dropping slipping ");
+
+        return sb.ToString().Trim();
+    }
+
+    private static string BuildExperimentDomainQuery(
+        SituationalAssessment assessment,
+        IReadOnlyList<InterventionPlanItem> interventions)
+    {
+        var sb = new StringBuilder();
+        sb.Append("experiment hypothesis behavioral test trial outcome learning ");
+
+        // Add patterns that might warrant experiments
+        foreach (var pattern in assessment.Patterns.Take(3))
+        {
+            sb.Append(pattern).Append(' ');
+        }
+
+        // Add intervention reasoning
+        foreach (var intervention in interventions.Take(2))
+        {
+            sb.Append(intervention.Reasoning).Append(' ');
+        }
+
+        // Add outcome keywords to learn from past experiments
+        sb.Append("completed successful effective worked failed inconclusive ");
+
+        return sb.ToString().Trim();
+    }
+
+    private static string BuildGoalMetricDomainQuery(
+        SituationalAssessment assessment,
+        IReadOnlyList<InterventionPlanItem> interventions,
+        UserStateSnapshot state)
+    {
+        var sb = new StringBuilder();
+        sb.Append("goal metric scoreboard lead lag constraint target tracking ");
+
+        // Add intervention context
+        foreach (var intervention in interventions.Take(2))
+        {
+            sb.Append(intervention.Reasoning).Append(' ');
+        }
+
+        // Add specific goal references
+        var targetEntityIds = interventions
+            .Where(i => i.TargetEntityIds is { Count: > 0 })
+            .SelectMany(i => i.TargetEntityIds!)
+            .Take(3);
+        foreach (var id in targetEntityIds)
+        {
+            var goal = state.Goals.FirstOrDefault(g => g.Id.ToString() == id);
+            if (goal != null)
+                sb.Append(goal.Title).Append(' ');
+        }
+
+        // Add goal progress context
+        foreach (var progress in assessment.GoalProgressSummary.Take(2))
+        {
+            sb.Append(progress.GoalTitle).Append(' ');
+            if (!string.IsNullOrEmpty(progress.Bottleneck))
+                sb.Append(progress.Bottleneck).Append(' ');
+        }
+
+        return sb.ToString().Trim();
+    }
+
+    private static string BuildProjectDomainQuery(
+        SituationalAssessment assessment,
+        IReadOnlyList<InterventionPlanItem> interventions,
+        UserStateSnapshot state)
+    {
+        var sb = new StringBuilder();
+        sb.Append("project stuck next action milestone progress blocked ");
+
+        // Add intervention context
+        foreach (var intervention in interventions.Take(2))
+        {
+            sb.Append(intervention.Reasoning).Append(' ');
+        }
+
+        // Add specific project references
+        var targetEntityIds = interventions
+            .Where(i => i.TargetEntityIds is { Count: > 0 })
+            .SelectMany(i => i.TargetEntityIds!)
+            .Take(3);
+        foreach (var id in targetEntityIds)
+        {
+            var project = state.Projects.FirstOrDefault(p => p.Id.ToString() == id);
+            if (project != null)
+                sb.Append(project.Title).Append(' ');
+        }
+
+        // Add stuck project indicators
+        var stuckProjects = state.Projects.Where(p => p.NextTaskId is null && p.Status == ProjectStatus.Active).ToList();
+        if (stuckProjects.Count > 0)
+            sb.Append("stuck stalled no next action blocked ");
+
+        return sb.ToString().Trim();
+    }
+
+    private static string BuildGenericDomainQuery(
         string domain,
         SituationalAssessment assessment,
         IReadOnlyList<InterventionPlanItem> interventions)

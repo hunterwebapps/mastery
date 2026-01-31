@@ -256,6 +256,13 @@ internal static class HabitGenerationPrompt
             - For Archive: use when habit has very low adherence for extended period or is no longer aligned with goals
             - ALWAYS include _summary in actionPayload - this is shown to the user before they accept
             - _summary should be concise (under 60 chars) and describe exactly what will happen
+
+            ## Historical Context Usage
+            If related habit history is provided:
+            - Use successful mode switches as templates (e.g., if switching to Minimum worked before, suggest it again)
+            - Avoid habit suggestions similar to recently dismissed ones
+            - Reference past adherence patterns when suggesting schedules
+            - Build on habits that were successfully created and maintained
             """;
     }
 
@@ -363,8 +370,8 @@ internal static class HabitGenerationPrompt
 
         sb.AppendLine();
 
-        // Add RAG historical context if available
-        RagContextFormatter.AppendIfPresent(sb, ragContext, "Related Habit History");
+        // Add RAG historical context BEFORE generating - inform recommendations
+        RagContextFormatter.AppendForGeneration(sb, ragContext, "Habit", today ?? DateOnly.FromDateTime(DateTime.UtcNow));
 
         sb.AppendLine("Generate recommendations for each intervention plan item assigned to you.");
         return sb.ToString();

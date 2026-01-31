@@ -85,22 +85,62 @@ public sealed class ExperimentEmbeddingTextStrategy(IGoalRepository _goalReposit
             sb.AppendLine($"Notes: {string.Join("; ", entity.Notes)}");
         }
 
-        // Include result if completed
+        // Include result if completed - critical for RAG learning
         if (entity.Result != null)
         {
             sb.AppendLine();
             sb.AppendLine("Result:");
             sb.AppendLine($"  Outcome: {EmbeddingFormatHelper.FormatEnum(entity.Result.OutcomeClassification)}");
-            EmbeddingFormatHelper.AppendFieldIfNotEmpty(sb, "  Summary", entity.Result.NarrativeSummary);
+            sb.AppendLine($"  Effectiveness: {FormatEffectiveness(entity.Result.OutcomeClassification)}");
+            EmbeddingFormatHelper.AppendFieldIfNotEmpty(sb, "  Key learning", entity.Result.NarrativeSummary);
+
+            // Add quantitative outcomes if available
+            if (entity.Result.BaselineValue.HasValue && entity.Result.RunValue.HasValue)
+            {
+                var change = entity.Result.RunValue.Value - entity.Result.BaselineValue.Value;
+                var direction = change > 0 ? "increased" : change < 0 ? "decreased" : "unchanged";
+                sb.AppendLine($"  Metric change: {direction} from {entity.Result.BaselineValue:F1} to {entity.Result.RunValue:F1}");
+            }
         }
 
-        // Domain keywords for semantic search
+        // Add status-based outcome keywords for abandoned experiments
+        if (entity.Status == ExperimentStatus.Abandoned)
+        {
+            sb.AppendLine();
+            sb.AppendLine("Outcome: Abandoned (user discontinued experiment before completion)");
+        }
+
+        // Domain keywords for semantic search - include outcome keywords
+        var outcomeKeywords = entity.Status switch
+        {
+            ExperimentStatus.Completed when entity.Result?.OutcomeClassification == ExperimentOutcome.Positive =>
+                "successful positive worked effective improved",
+            ExperimentStatus.Completed when entity.Result?.OutcomeClassification == ExperimentOutcome.Negative =>
+                "negative failed worsened ineffective",
+            ExperimentStatus.Completed when entity.Result?.OutcomeClassification == ExperimentOutcome.Inconclusive =>
+                "inconclusive unclear mixed",
+            ExperimentStatus.Completed when entity.Result?.OutcomeClassification == ExperimentOutcome.Neutral =>
+                "neutral no effect unchanged",
+            ExperimentStatus.Abandoned => "abandoned discontinued stopped failed",
+            ExperimentStatus.Active => "running active ongoing",
+            _ => ""
+        };
+
         EmbeddingFormatHelper.AppendKeywords(sb,
             "experiment", "hypothesis", "A/B test", "behavior change", "learning",
-            "measurement", "intervention", "test", "trial", "outcome");
+            "measurement", "intervention", "test", "trial", "outcome", outcomeKeywords);
 
         return sb.ToString();
     }
+
+    private static string FormatEffectiveness(ExperimentOutcome outcome) => outcome switch
+    {
+        ExperimentOutcome.Positive => "Effective - hypothesis confirmed",
+        ExperimentOutcome.Negative => "Ineffective - hypothesis rejected",
+        ExperimentOutcome.Inconclusive => "Inconclusive - needs more data or different approach",
+        ExperimentOutcome.Neutral => "No effect - hypothesis neither confirmed nor rejected",
+        _ => "Unknown"
+    };
 
     private static string FormatExperimentStatus(ExperimentStatus status) => status switch
     {
