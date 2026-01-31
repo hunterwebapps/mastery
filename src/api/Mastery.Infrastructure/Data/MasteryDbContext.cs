@@ -118,7 +118,9 @@ public class MasteryDbContext(
                         _ => "Unknown"
                     },
                     UserId: ownedEntity.UserId,
-                    DomainEventTypes: []
+                    DomainEventTypes: entry.Entity.DomainEvents
+                        .Select(e => e.GetType().Name)
+                        .ToArray()
                 ));
             }
         }

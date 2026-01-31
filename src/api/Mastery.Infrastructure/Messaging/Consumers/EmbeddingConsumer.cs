@@ -6,7 +6,6 @@ using Mastery.Infrastructure.Messaging.Events;
 using Mastery.Infrastructure.Messaging.Services;
 using Mastery.Infrastructure.Telemetry;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Serilog.Context;
 
 namespace Mastery.Infrastructure.Messaging.Consumers;
@@ -63,27 +62,34 @@ public sealed class EmbeddingConsumer(
 
             foreach (var evt in nonDeletions)
             {
-                var entity = await _entityResolver.ResolveAsync(evt.EntityType, evt.EntityId, cancellationToken);
-                if (entity is null)
+                try
                 {
-                    _logger.LogWarning("Entity {EntityType}/{EntityId} not found, skipping", evt.EntityType, evt.EntityId);
-                    continue;
-                }
+                    var entity = await _entityResolver.ResolveAsync(evt.EntityType, evt.EntityId, cancellationToken);
+                    if (entity is null)
+                    {
+                        _logger.LogError("Entity {EntityType}/{EntityId} not found, skipping", evt.EntityType, evt.EntityId);
+                        continue;
+                    }
 
-                var text = await _strategyFactory.CompileTextAsync(evt.EntityType, entity, cancellationToken);
-                if (string.IsNullOrWhiteSpace(text))
+                    var text = await _strategyFactory.CompileTextAsync(evt.EntityType, entity, cancellationToken);
+                    if (string.IsNullOrWhiteSpace(text))
+                    {
+                        continue;
+                    }
+
+                    var userId = _strategyFactory.GetUserId(entity);
+                    if (string.IsNullOrEmpty(userId))
+                    {
+                        _logger.LogError("Could not determine UserId for {EntityType}/{EntityId}", evt.EntityType, evt.EntityId);
+                        continue;
+                    }
+
+                    documentsToEmbed.Add((evt, entity, text, userId));
+                }
+                catch (Exception ex)
                 {
-                    continue;
+                    _logger.LogError(ex, "Error processing entity {EntityType}/{EntityId}", evt.EntityType, evt.EntityId);
                 }
-
-                var userId = _strategyFactory.GetUserId(entity);
-                if (string.IsNullOrEmpty(userId))
-                {
-                    _logger.LogWarning("Could not determine UserId for {EntityType}/{EntityId}", evt.EntityType, evt.EntityId);
-                    continue;
-                }
-
-                documentsToEmbed.Add((evt, entity, text, userId));
             }
 
             if (documentsToEmbed.Count == 0)
@@ -110,10 +116,9 @@ public sealed class EmbeddingConsumer(
 
                 documents.Add(new EmbeddingDocument
                 {
-                    Id = EmbeddingDocument.CreateId(evt.EntityType, evt.EntityId),
+                    Id = evt.EntityId.ToString(),
                     UserId = userId,
                     EntityType = evt.EntityType,
-                    EntityId = evt.EntityId,
                     EmbeddingText = text,
                     Embedding = embedding,
                     UpdatedAt = DateTime.UtcNow
@@ -146,13 +151,8 @@ public sealed class EmbeddingConsumer(
 
         foreach (var evt in events)
         {
-            if (evt.DomainEventTypes.Length == 0 || string.IsNullOrEmpty(evt.UserId))
-            {
-                continue;
-            }
-
             var classifications = evt.DomainEventTypes
-                .Select(domainEventType => _signalClassifier.ClassifyOutboxEntry(
+                .Select(domainEventType => _signalClassifier.ClassifySignal(
                     evt.EntityType,
                     evt.EntityId,
                     domainEventType,

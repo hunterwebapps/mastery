@@ -17,15 +17,8 @@ namespace Mastery.Infrastructure.Services;
 /// <summary>
 /// Resolves entities by type and ID for outbox processing.
 /// </summary>
-public class EntityResolver : IEntityResolver
+public class EntityResolver(MasteryDbContext _context) : IEntityResolver
 {
-    private readonly MasteryDbContext _context;
-
-    public EntityResolver(MasteryDbContext context)
-    {
-        _context = context;
-    }
-
     public async Task<object?> ResolveAsync(string entityType, Guid entityId, CancellationToken ct)
     {
         return entityType switch
@@ -52,7 +45,7 @@ public class EntityResolver : IEntityResolver
                 .SingleOrDefaultAsync(x => x.Id == entityId, ct),
             nameof(Season) => await _context.Seasons.FindAsync([entityId], ct),
             nameof(Recommendation) => await _context.Recommendations.FindAsync([entityId], ct),
-            _ => null,
+            _ => throw new ArgumentOutOfRangeException(nameof(entityType), entityType, null)
         };
     }
 }

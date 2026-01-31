@@ -101,10 +101,6 @@ public static class DependencyInjection
 
         services.AddSingleton<IDateTimeProvider, DateTimeProvider>();
 
-        // Outbox processing services
-        services.AddScoped<IEntityResolver, EntityResolver>();
-        services.AddScoped<Outbox.IEmbeddingProcessor, EmbeddingProcessor>();
-
         // OpenAI configuration
         services.Configure<OpenAiOptions>(opts =>
             configuration.GetSection(OpenAiOptions.SectionName).Bind(opts));
@@ -193,6 +189,8 @@ public static class DependencyInjection
 
             return new CosmosClient(cosmosOptions.Endpoint, cosmosOptions.Key, options);
         });
+
+        services.AddScoped<IEntityResolver, EntityResolver>();
 
         // Register vector store
         services.AddScoped<IVectorStore, CosmosVectorStore>();

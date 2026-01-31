@@ -37,14 +37,14 @@ public sealed class CosmosVectorStore : IVectorStore
             _logger.LogDebug(
                 "Upserted embedding for {EntityType}/{EntityId}",
                 document.EntityType,
-                document.EntityId);
+                document.Id);
         }
         catch (CosmosException ex)
         {
             _logger.LogError(ex,
                 "Failed to upsert embedding for {EntityType}/{EntityId}",
                 document.EntityType,
-                document.EntityId);
+                document.Id);
             throw;
         }
     }
@@ -106,7 +106,7 @@ public sealed class CosmosVectorStore : IVectorStore
                         _logger.LogError(innerEx,
                             "Individual upsert also failed for {EntityType}/{EntityId}",
                             doc.EntityType,
-                            doc.EntityId);
+                            doc.Id);
                     }
                 }
             }

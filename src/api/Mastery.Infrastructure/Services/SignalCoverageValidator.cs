@@ -42,7 +42,7 @@ public sealed class SignalCoverageValidator : IHostedService
 
         if (unclassifiedEvents.Count > 0)
         {
-            _logger.LogWarning(
+            _logger.LogError(
                 "Found {Count} domain events without signal classification attributes: {Events}. " +
                 "Add [SignalClassification(...)] or [NoSignal] attribute to each event.",
                 unclassifiedEvents.Count,

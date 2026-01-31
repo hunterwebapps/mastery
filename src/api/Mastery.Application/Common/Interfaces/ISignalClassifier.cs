@@ -1,4 +1,3 @@
-using Mastery.Domain.Common;
 using Mastery.Domain.Enums;
 
 namespace Mastery.Application.Common.Interfaces;
@@ -9,14 +8,6 @@ namespace Mastery.Application.Common.Interfaces;
 public interface ISignalClassifier
 {
     /// <summary>
-    /// Determines if a collection of accumulated signals should be escalated to urgent priority.
-    /// </summary>
-    /// <param name="pendingSignals">The signals currently pending for the user.</param>
-    /// <param name="state">The current user state snapshot.</param>
-    /// <returns>True if the signals should be escalated to urgent processing.</returns>
-    bool ShouldEscalateToUrgent(IReadOnlyList<SignalClassification> pendingSignals, object? state);
-
-    /// <summary>
     /// Classifies an outbox entry into a signal based on domain event type name.
     /// Used by OutboxProcessingWorker after embeddings are generated.
     /// </summary>
@@ -25,7 +16,7 @@ public interface ISignalClassifier
     /// <param name="domainEventType">The domain event type name (e.g., "HabitCompletedEvent").</param>
     /// <param name="userId">The user ID (may be null for non-owned entities).</param>
     /// <returns>The signal classification, or null if the event should not generate a signal.</returns>
-    SignalClassification? ClassifyOutboxEntry(
+    SignalClassification? ClassifySignal(
         string entityType,
         Guid entityId,
         string? domainEventType,

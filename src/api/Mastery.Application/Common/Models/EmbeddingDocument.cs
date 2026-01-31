@@ -27,12 +27,6 @@ public sealed class EmbeddingDocument
     public string EntityType { get; set; } = null!;
 
     /// <summary>
-    /// The entity's unique identifier.
-    /// </summary>
-    [JsonPropertyName("entityId")]
-    public Guid EntityId { get; set; }
-
-    /// <summary>
     /// The compiled text used to generate the embedding.
     /// Useful for debugging and result display.
     /// </summary>

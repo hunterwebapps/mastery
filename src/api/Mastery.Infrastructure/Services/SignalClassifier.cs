@@ -51,32 +51,7 @@ public sealed class SignalClassifier : ISignalClassifier
     }
 
     /// <inheritdoc />
-    public bool ShouldEscalateToUrgent(IReadOnlyList<SignalClassification> pendingSignals, object? state)
-    {
-        // Escalation logic based on signal patterns:
-        // 1. Multiple missed habits in a row (adherence drop)
-        // 2. Multiple task reschedules (capacity overload signal)
-        // 3. Check-in skips combined with misses (disengagement signal)
-
-        var missedHabits = pendingSignals.Count(s => s.EventType == nameof(HabitMissedEvent));
-        var rescheduledTasks = pendingSignals.Count(s => s.EventType == nameof(TaskRescheduledEvent));
-        var skippedCheckIns = pendingSignals.Count(s => s.EventType == nameof(CheckInSkippedEvent));
-
-        // Escalate if clear pattern of overload or disengagement
-        if (missedHabits >= 3)
-            return true;
-
-        if (rescheduledTasks >= 3)
-            return true;
-
-        if (skippedCheckIns >= 2 && missedHabits >= 1)
-            return true;
-
-        return false;
-    }
-
-    /// <inheritdoc />
-    public SignalClassification? ClassifyOutboxEntry(
+    public SignalClassification? ClassifySignal(
         string entityType,
         Guid entityId,
         string? domainEventType,
