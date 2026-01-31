@@ -119,14 +119,40 @@ public abstract class BaseSignalConsumer<TConsumer>(
                 history.RecordTier2Executed();
             }
 
-            // 4. Persist recommendations
+            // 4. Persist recommendations (with deduplication)
             var recommendationIds = new List<Guid>();
+            var skippedDuplicates = 0;
             foreach (var recommendation in outcome.GeneratedRecommendations)
             {
+                // Check for existing pending recommendation with same type and target
+                var exists = await RecommendationRepo.ExistsPendingForTargetAsync(
+                    recommendation.UserId,
+                    recommendation.Type,
+                    recommendation.Target.Kind,
+                    recommendation.Target.EntityId,
+                    cancellationToken);
+
+                if (exists)
+                {
+                    skippedDuplicates++;
+                    Logger.LogDebug(
+                        "Skipped duplicate recommendation: {Type} for {TargetKind} {TargetEntityId}",
+                        recommendation.Type, recommendation.Target.Kind, recommendation.Target.EntityId);
+                    continue;
+                }
+
                 await RecommendationRepo.AddAsync(recommendation, cancellationToken);
                 recommendationIds.Add(recommendation.Id);
             }
-            history.RecordRecommendations(outcome.GeneratedRecommendations.Count, recommendationIds);
+
+            if (skippedDuplicates > 0)
+            {
+                Logger.LogInformation(
+                    "Skipped {Count} duplicate recommendations for user {UserId}",
+                    skippedDuplicates, batch.UserId);
+            }
+
+            history.RecordRecommendations(recommendationIds.Count, recommendationIds);
 
             // 5. Mark signals as processed and persist for audit
             var now = DateTimeProvider.UtcNow;

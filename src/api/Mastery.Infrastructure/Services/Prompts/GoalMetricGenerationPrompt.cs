@@ -1,4 +1,5 @@
 using System.Text;
+using Mastery.Application.Common.Models;
 using Mastery.Domain.Diagnostics.Snapshots;
 using Mastery.Domain.Enums;
 
@@ -411,6 +412,7 @@ internal static class GoalMetricGenerationPrompt
             actionPayload: { "projectId": "guid-string", "_summary": "Archive stale project (no activity for 30 days)" }
 
             ## Guidelines
+            - Score MUST be 0.0-1.0 where 0.0=minimal impact, 1.0=maximum urgency/impact (e.g., 0.85 for high priority)
             - For ProjectStuckFix: suggest the SMALLEST possible next step to unblock
             - For GoalScoreboardSuggestion: explain which metric kinds are missing and why they matter
             - For MetricObservationReminder: note how long since last observation
@@ -430,7 +432,8 @@ internal static class GoalMetricGenerationPrompt
         IReadOnlyList<MetricDefinitionSnapshot> metrics,
         IReadOnlyList<UserValueSnapshot>? values = null,
         IReadOnlyList<UserRoleSnapshot>? roles = null,
-        SeasonSnapshot? season = null)
+        SeasonSnapshot? season = null,
+        RagContext? ragContext = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"# Assessment: {assessment.OverallMomentum} momentum");
@@ -480,11 +483,12 @@ internal static class GoalMetricGenerationPrompt
         }
         sb.AppendLine();
 
-        var activeGoals = goals.Where(g => g.Status == GoalStatus.Active).ToList();
-        sb.AppendLine($"# Active Goals ({activeGoals.Count})");
+        // Include both Active and Draft goals for recommendations and feedback
+        var activeGoals = goals.Where(g => g.Status == GoalStatus.Active || g.Status == GoalStatus.Draft).ToList();
+        sb.AppendLine($"# Goals ({activeGoals.Count} active/draft)");
         foreach (var g in activeGoals)
         {
-            sb.AppendLine($"- [{g.Id}] \"{g.Title}\" | Priority:{g.Priority}");
+            sb.AppendLine($"- [{g.Id}] \"{g.Title}\" | Status:{g.Status} | Priority:{g.Priority}");
             var metricKinds = g.Metrics.Select(m => m.Kind).Distinct().ToList();
             var missing = new List<string>();
             if (!metricKinds.Contains(MetricKind.Lag)) missing.Add("Lag");
@@ -587,6 +591,9 @@ internal static class GoalMetricGenerationPrompt
         }
         sb.AppendLine("- Do NOT invent or hallucinate entity IDs. Only use IDs that appear in the lists above.");
         sb.AppendLine();
+
+        // Add RAG historical context if available
+        RagContextFormatter.AppendIfPresent(sb, ragContext, "Related Goal/Metric History");
 
         sb.AppendLine("Generate recommendations for each intervention plan item assigned to you.");
         return sb.ToString();

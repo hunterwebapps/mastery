@@ -1,4 +1,5 @@
 using System.Text;
+using Mastery.Application.Common.Models;
 using Mastery.Domain.Diagnostics.Snapshots;
 using Mastery.Domain.Enums;
 
@@ -278,6 +279,7 @@ internal static class ExperimentGenerationPrompt
             Only use IDs from the Available Metrics list. Set to empty [] if no guardrails needed.
 
             ## Guidelines
+            - Score MUST be 0.0-1.0 where 0.0=minimal impact, 1.0=maximum urgency/impact (e.g., 0.85 for high priority)
             - Experiments should be specific, time-bounded, and have a clear change + expected outcome
             - Frame experiments as curiosity, not obligation: "Let's find out if..." not "You should..."
             - Reflection prompts should be open-ended and non-judgmental
@@ -299,7 +301,8 @@ internal static class ExperimentGenerationPrompt
         IReadOnlyList<MetricDefinitionSnapshot> metrics,
         IReadOnlyList<GoalSnapshot> goals,
         PreferencesSnapshot? preferences = null,
-        SeasonSnapshot? season = null)
+        SeasonSnapshot? season = null,
+        RagContext? ragContext = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"# Assessment: {assessment.OverallMomentum} momentum, {assessment.EnergyTrend} energy");
@@ -363,14 +366,14 @@ internal static class ExperimentGenerationPrompt
 
         sb.AppendLine();
 
-        // Available goals for linking
-        var activeGoals = goals.Where(g => g.Status == GoalStatus.Active).ToList();
+        // Available goals for linking (include Draft for feedback)
+        var activeGoals = goals.Where(g => g.Status == GoalStatus.Active || g.Status == GoalStatus.Draft).ToList();
         if (activeGoals.Count > 0)
         {
             sb.AppendLine($"# Available Goals for Linking ({activeGoals.Count})");
             sb.AppendLine("(Use linkedGoalIds to connect experiment to relevant goals)");
             foreach (var g in activeGoals)
-                sb.AppendLine($"- [{g.Id}] \"{g.Title}\" | Priority:{g.Priority}");
+                sb.AppendLine($"- [{g.Id}] \"{g.Title}\" | Status:{g.Status} | Priority:{g.Priority}");
             sb.AppendLine();
         }
 
@@ -438,6 +441,9 @@ internal static class ExperimentGenerationPrompt
             sb.AppendLine("- Do NOT invent or hallucinate experiment IDs. Only use IDs that appear in the Current Experiments list.");
         }
         sb.AppendLine();
+
+        // Add RAG historical context if available
+        RagContextFormatter.AppendIfPresent(sb, ragContext, "Related Experiment History");
 
         sb.AppendLine("Generate recommendations for each intervention plan item assigned to you.");
         return sb.ToString();

@@ -1,5 +1,5 @@
 using System.Text;
-using System.Text.Json.Serialization;
+using Mastery.Application.Common.Models;
 using Mastery.Domain.Diagnostics.Snapshots;
 using Mastery.Domain.Enums;
 
@@ -278,7 +278,7 @@ internal static class TaskGenerationPrompt
             ## Guidelines
             - Title should be imperative and concise: "Complete: Design API schema" or "Move 'Write tests' to Thursday"
             - Rationale should be personal and specific, referencing the user's actual situation
-            - Score reflects urgency and impact (higher = more important)
+            - Score MUST be 0.0-1.0 where 0.0=minimal impact, 1.0=maximum urgency/impact (e.g., 0.85 for high priority)
             - For ExecuteToday: the task MUST already exist (use its ID)
             - For Create: the task is new (targetEntityId is null)
             - For Defer: the task MUST already exist (use its ID), and newDate must be in the future
@@ -298,7 +298,8 @@ internal static class TaskGenerationPrompt
         IReadOnlyList<ProjectSnapshot>? projects = null,
         IReadOnlyList<GoalSnapshot>? goals = null,
         IReadOnlyList<UserRoleSnapshot>? roles = null,
-        IReadOnlyList<UserValueSnapshot>? values = null)
+        IReadOnlyList<UserValueSnapshot>? values = null,
+        RagContext? ragContext = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"# Assessment Summary: {assessment.CapacityStatus} capacity, {assessment.EnergyTrend} energy, {assessment.OverallMomentum} momentum");
@@ -351,13 +352,13 @@ internal static class TaskGenerationPrompt
             sb.AppendLine();
         }
 
-        // Available Goals for linking
-        var activeGoals = goals?.Where(g => g.Status == GoalStatus.Active).Take(8).ToList();
+        // Available Goals for linking (include Draft for feedback)
+        var activeGoals = goals?.Where(g => g.Status == GoalStatus.Active || g.Status == GoalStatus.Draft).Take(8).ToList();
         if (activeGoals is { Count: > 0 })
         {
             sb.AppendLine("# Available Goals (for goalId)");
             foreach (var g in activeGoals)
-                sb.AppendLine($"  [{g.Id}] \"{g.Title}\" | P{g.Priority}");
+                sb.AppendLine($"  [{g.Id}] \"{g.Title}\" | Status:{g.Status} | P{g.Priority}");
             sb.AppendLine();
         }
 
@@ -405,6 +406,10 @@ internal static class TaskGenerationPrompt
             sb.AppendLine("- NO GOALS EXIST. Set goalId to null in Create payloads.");
 
         sb.AppendLine();
+
+        // Add RAG historical context if available
+        RagContextFormatter.AppendIfPresent(sb, ragContext, "Related Task History");
+
         sb.AppendLine("Generate recommendations for each intervention plan item assigned to you.");
 
         return sb.ToString();

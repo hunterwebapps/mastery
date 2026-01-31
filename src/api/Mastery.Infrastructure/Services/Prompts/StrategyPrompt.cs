@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Mastery.Application.Common.Models;
 using Mastery.Domain.Diagnostics.Snapshots;
 using Mastery.Domain.Enums;
 
@@ -57,6 +58,7 @@ internal static class StrategyPrompt
         - TaskBreakdownSuggestion: break a large or stuck task into subtasks
         - ScheduleAdjustmentSuggestion: move a task to a better day
         - ProjectStuckFix: define a next action for a stalled project
+        - ProjectGoalLinkSuggestion: link an unattached project to a relevant goal for better tracking
         - ExperimentRecommendation: suggest a behavioral experiment to address a pattern
         - GoalScoreboardSuggestion: add missing metrics to a goal's scoreboard
         - HabitFromLeadMetricSuggestion: create a new habit to drive an orphaned lead metric
@@ -87,6 +89,12 @@ internal static class StrategyPrompt
             - Match coaching style: Direct users want fewer words; Analytical users want more reasoning
             - Honor non-negotiables: Don't suggest anything that conflicts with season non-negotiables
             - Season-intensity-aware: High intensity seasons can accept more ambitious interventions; Recovery seasons need gentler approaches
+
+            CONFLICT AVOIDANCE (do not suggest overlapping interventions):
+            - Do NOT suggest both CheckInConsistencyNudge AND an ExperimentRecommendation about check-ins — choose the most appropriate single intervention
+            - Do NOT suggest both HabitFromLeadMetricSuggestion AND an ExperimentRecommendation about the same behavior — one is about creating structure, the other about testing; pick one
+            - Do NOT suggest multiple recommendations targeting the same entity (e.g., two ProjectStuckFix for the same project)
+            - When in doubt, prefer the more specific intervention over the general one
             """);
 
         sb.AppendLine();
@@ -100,7 +108,8 @@ internal static class StrategyPrompt
     public static string BuildUserPrompt(
         SituationalAssessment assessment,
         RecommendationContext context,
-        UserProfileSnapshot? profile = null)
+        UserProfileSnapshot? profile = null,
+        RagContext? ragContext = null)
     {
         var sb = new StringBuilder();
 
@@ -131,6 +140,9 @@ internal static class StrategyPrompt
             WriteIndented = true
         }));
         sb.AppendLine();
+
+        // Add RAG historical context if available
+        RagContextFormatter.AppendIfPresent(sb, ragContext, "Past Interventions");
 
         sb.AppendLine($"# Current Context: {context}");
         sb.AppendLine("Produce your strategic intervention plan.");

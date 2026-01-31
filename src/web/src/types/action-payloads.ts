@@ -72,3 +72,14 @@ export interface ProjectStuckFixPayload {
   suggestedAction: string
   _summary: string
 }
+
+/**
+ * Payload for ProjectGoalLinkSuggestion recommendations
+ * Suggests linking an unattached project to a relevant goal
+ */
+export interface ProjectGoalLinkPayload {
+  projectId: string
+  goalId: string
+  goalTitle: string
+  _summary: string
+}

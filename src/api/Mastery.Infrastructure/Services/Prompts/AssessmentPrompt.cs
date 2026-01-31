@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json.Serialization;
+using Mastery.Application.Common.Models;
 using Mastery.Domain.Diagnostics.Snapshots;
 using Mastery.Domain.Enums;
 
@@ -87,7 +88,7 @@ internal static class AssessmentPrompt
         return sb.ToString();
     }
 
-    public static string BuildUserPrompt(UserStateSnapshot state, RecommendationContext context)
+    public static string BuildUserPrompt(UserStateSnapshot state, RecommendationContext context, RagContext? ragContext = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"# User State Snapshot (as of {state.Today:yyyy-MM-dd})");
@@ -102,6 +103,9 @@ internal static class AssessmentPrompt
         SerializeExperiments(sb, state.Experiments);
         SerializeCheckIns(sb, state.RecentCheckIns);
         SerializeMetrics(sb, state.MetricDefinitions);
+
+        // Add RAG historical context if available
+        RagContextFormatter.AppendIfPresent(sb, ragContext, "Historical Patterns");
 
         return sb.ToString();
     }
@@ -183,13 +187,14 @@ internal static class AssessmentPrompt
 
     private static void SerializeGoals(StringBuilder sb, IReadOnlyList<GoalSnapshot> goals)
     {
-        var active = goals.Where(g => g.Status == GoalStatus.Active).ToList();
-        if (active.Count == 0) { sb.AppendLine("## Goals: None active"); sb.AppendLine(); return; }
+        // Include both Active and Draft goals for feedback and recommendations
+        var relevant = goals.Where(g => g.Status == GoalStatus.Active || g.Status == GoalStatus.Draft).ToList();
+        if (relevant.Count == 0) { sb.AppendLine("## Goals: None active or draft"); sb.AppendLine(); return; }
 
-        sb.AppendLine($"## Goals ({active.Count} active)");
-        foreach (var g in active)
+        sb.AppendLine($"## Goals ({relevant.Count} active/draft)");
+        foreach (var g in relevant)
         {
-            sb.AppendLine($"- [{g.Id}] \"{g.Title}\" | Priority:{g.Priority} | Deadline:{g.Deadline?.ToString("yyyy-MM-dd") ?? "none"}");
+            sb.AppendLine($"- [{g.Id}] \"{g.Title}\" | Status:{g.Status} | Priority:{g.Priority} | Deadline:{g.Deadline?.ToString("yyyy-MM-dd") ?? "none"}");
             foreach (var m in g.Metrics)
             {
                 sb.AppendLine($"  - {m.Kind} metric: \"{m.MetricName}\" | Target:{m.TargetValue} | Current:{m.CurrentValue?.ToString() ?? "?"} | Source:{m.SourceHint}");

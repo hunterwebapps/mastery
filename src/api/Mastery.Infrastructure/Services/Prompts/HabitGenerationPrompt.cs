@@ -1,4 +1,5 @@
 using System.Text;
+using Mastery.Application.Common.Models;
 using Mastery.Domain.Diagnostics.Snapshots;
 using Mastery.Domain.Enums;
 
@@ -245,6 +246,7 @@ internal static class HabitGenerationPrompt
             """ + SchemaReference.HabitFieldGuidance + """
 
             ## Guidelines
+            - Score MUST be 0.0-1.0 where 0.0=minimal impact, 1.0=maximum urgency/impact (e.g., 0.85 for high priority)
             - For mode suggestions: frame it as protecting the streak, not giving up
             - For new habits: start small (suggest minimum mode or simple schedule)
             - Connect the habit to the user's goals in the rationale
@@ -265,7 +267,8 @@ internal static class HabitGenerationPrompt
         IReadOnlyList<UserValueSnapshot>? values = null,
         IReadOnlyList<UserRoleSnapshot>? roles = null,
         IReadOnlyList<MetricDefinitionSnapshot>? metrics = null,
-        DateOnly? today = null)
+        DateOnly? today = null,
+        RagContext? ragContext = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"# Assessment: {assessment.CapacityStatus} capacity, {assessment.EnergyTrend} energy");
@@ -315,14 +318,14 @@ internal static class HabitGenerationPrompt
         }
         sb.AppendLine();
 
-        // Active Goals with lead metrics
-        var activeGoals = goals.Where(g => g.Status == GoalStatus.Active).ToList();
+        // Active/Draft Goals with lead metrics
+        var activeGoals = goals.Where(g => g.Status == GoalStatus.Active || g.Status == GoalStatus.Draft).ToList();
         if (activeGoals.Count > 0)
         {
-            sb.AppendLine("# Active Goals (for linking via goalIds)");
+            sb.AppendLine("# Goals (for linking via goalIds)");
             foreach (var g in activeGoals)
             {
-                sb.AppendLine($"- [{g.Id}] \"{g.Title}\" | P{g.Priority}");
+                sb.AppendLine($"- [{g.Id}] \"{g.Title}\" | Status:{g.Status} | P{g.Priority}");
                 foreach (var m in g.Metrics.Where(m => m.Kind == MetricKind.Lead))
                     sb.AppendLine($"    Lead: \"{m.MetricName}\" | Target:{m.TargetValue} | Current:{m.CurrentValue?.ToString() ?? "?"} | Source:{m.SourceHint}");
             }
@@ -359,6 +362,10 @@ internal static class HabitGenerationPrompt
             sb.AppendLine("- NO GOALS EXIST. Set goalIds to null in Create payloads.");
 
         sb.AppendLine();
+
+        // Add RAG historical context if available
+        RagContextFormatter.AppendIfPresent(sb, ragContext, "Related Habit History");
+
         sb.AppendLine("Generate recommendations for each intervention plan item assigned to you.");
         return sb.ToString();
     }

@@ -10,6 +10,7 @@ import {
   Clock,
   ArrowRight,
   ChevronDown,
+  Link2,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -29,6 +30,7 @@ const typeIcons: Record<RecommendationType, React.ElementType> = {
   ScheduleAdjustmentSuggestion: Clock,
   ProjectStuckFix: AlertTriangle,
   ProjectSuggestion: Lightbulb,
+  ProjectGoalLinkSuggestion: Link2,
   ExperimentRecommendation: Lightbulb,
   GoalScoreboardSuggestion: Target,
   HabitFromLeadMetricSuggestion: Activity,
@@ -69,6 +71,7 @@ function getTypeBorderColor(type: RecommendationType): string {
     ScheduleAdjustmentSuggestion: 'border-l-sky-500',
     ProjectStuckFix: 'border-l-red-500',
     ProjectSuggestion: 'border-l-pink-500',
+    ProjectGoalLinkSuggestion: 'border-l-fuchsia-500',
     ExperimentRecommendation: 'border-l-violet-500',
     GoalScoreboardSuggestion: 'border-l-teal-500',
     HabitFromLeadMetricSuggestion: 'border-l-emerald-500',

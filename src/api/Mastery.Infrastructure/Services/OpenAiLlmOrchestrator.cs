@@ -19,6 +19,8 @@ namespace Mastery.Infrastructure.Services;
 /// </summary>
 internal sealed class OpenAiLlmOrchestrator(
     IOptions<OpenAiOptions> _options,
+    IOptions<RagOptions> _ragOptions,
+    IRagContextRetriever _ragRetriever,
     LlmResponseParser _parser,
     ILogger<OpenAiLlmOrchestrator> _logger)
     : IRecommendationOrchestrator
@@ -72,10 +74,15 @@ internal sealed class OpenAiLlmOrchestrator(
     {
         var trace = new PipelineTrace();
 
+        // ── RAG for Stage 1 ────────────────────────────────────────────
+        _logger.LogDebug("Retrieving RAG context for assessment stage");
+        var assessmentRag = await _ragRetriever.RetrieveForAssessmentAsync(state, context, cancellationToken);
+        trace.AssessmentRag = assessmentRag;
+
         // ── Stage 1: Situational Assessment ────────────────────────────
         _logger.LogInformation("Stage 1: Running situational assessment for context {Context}", context);
 
-        var assessment = await RunStage1AssessmentAsync(state, context, cancellationToken);
+        var assessment = await RunStage1AssessmentAsync(state, context, assessmentRag, cancellationToken);
         if (assessment is null)
         {
             _logger.LogWarning("Stage 1 failed — returning empty results");
@@ -85,10 +92,15 @@ internal sealed class OpenAiLlmOrchestrator(
         }
         trace.Assessment = assessment;
 
+        // ── RAG for Stage 2 ────────────────────────────────────────────
+        _logger.LogDebug("Retrieving RAG context for strategy stage");
+        var strategyRag = await _ragRetriever.RetrieveForStrategyAsync(assessment, context, state.UserId, cancellationToken);
+        trace.StrategyRag = strategyRag;
+
         // ── Stage 2: Recommendation Strategy ───────────────────────────
         _logger.LogInformation("Stage 2: Building recommendation strategy");
 
-        var strategy = await RunStage2StrategyAsync(assessment, context, state.Profile, cancellationToken);
+        var strategy = await RunStage2StrategyAsync(assessment, context, state.Profile, strategyRag, cancellationToken);
         if (strategy is null)
         {
             _logger.LogWarning("Stage 2 failed — returning empty results");
@@ -102,7 +114,10 @@ internal sealed class OpenAiLlmOrchestrator(
         _logger.LogInformation("Stage 3: Generating recommendations across domains (parallel)");
 
         var generated = await RunStage3GenerationAsync(
-            assessment, strategy, state, cancellationToken);
+            assessment, strategy, state, trace, cancellationToken);
+
+        // Remove conflicting/overlapping recommendations
+        generated = RemoveConflictingRecommendations(generated);
         trace.Generated = generated;
 
         // Enforce max budget from strategy
@@ -133,12 +148,13 @@ internal sealed class OpenAiLlmOrchestrator(
     private async Task<SituationalAssessment?> RunStage1AssessmentAsync(
         UserStateSnapshot state,
         RecommendationContext context,
+        RagContext? ragContext,
         CancellationToken cancellationToken)
     {
         var json = await CallOpenAiAsync(
             AssessmentPrompt.Model,
             AssessmentPrompt.BuildSystemPrompt(context),
-            AssessmentPrompt.BuildUserPrompt(state, context),
+            AssessmentPrompt.BuildUserPrompt(state, context, ragContext),
             AssessmentPrompt.SchemaName,
             AssessmentPrompt.ResponseSchema,
             cancellationToken);
@@ -163,12 +179,13 @@ internal sealed class OpenAiLlmOrchestrator(
         SituationalAssessment assessment,
         RecommendationContext context,
         UserProfileSnapshot? profile,
+        RagContext? ragContext,
         CancellationToken cancellationToken)
     {
         var json = await CallOpenAiAsync(
             StrategyPrompt.Model,
             StrategyPrompt.BuildSystemPrompt(context),
-            StrategyPrompt.BuildUserPrompt(assessment, context, profile),
+            StrategyPrompt.BuildUserPrompt(assessment, context, profile, ragContext),
             StrategyPrompt.SchemaName,
             StrategyPrompt.ResponseSchema,
             cancellationToken);
@@ -193,6 +210,7 @@ internal sealed class OpenAiLlmOrchestrator(
         SituationalAssessment assessment,
         RecommendationStrategy strategy,
         UserStateSnapshot state,
+        PipelineTrace trace,
         CancellationToken cancellationToken)
     {
         var plan = strategy.InterventionPlan;
@@ -208,7 +226,7 @@ internal sealed class OpenAiLlmOrchestrator(
         var goalMetricTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             { "GoalScoreboardSuggestion", "MetricObservationReminder", "GoalEditSuggestion", "GoalArchiveSuggestion", "MetricEditSuggestion" };
         var projectTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "ProjectStuckFix", "ProjectSuggestion", "ProjectEditSuggestion", "ProjectArchiveSuggestion" };
+            { "ProjectStuckFix", "ProjectSuggestion", "ProjectEditSuggestion", "ProjectArchiveSuggestion", "ProjectGoalLinkSuggestion" };
 
         var taskItems = plan.Where(i => taskTypes.Contains(i.TargetType)).ToList();
         var habitItems = plan.Where(i => habitTypes.Contains(i.TargetType)).ToList();
@@ -216,25 +234,50 @@ internal sealed class OpenAiLlmOrchestrator(
         var goalMetricItems = plan.Where(i => goalMetricTypes.Contains(i.TargetType)).ToList();
         var projectItems = plan.Where(i => projectTypes.Contains(i.TargetType)).ToList();
 
-        // Launch domain prompts in parallel
-        var tasks = new List<Task<List<RecommendationCandidate>>>();
+        // Retrieve RAG context for each domain in parallel (if enabled)
+        var ragTasks = new Dictionary<string, Task<RagContext?>>();
 
         if (taskItems.Count > 0)
-            tasks.Add(GenerateTaskDomainAsync(assessment, taskItems, state, cancellationToken));
+            ragTasks["Task"] = _ragRetriever.RetrieveForGenerationAsync("Task", assessment, taskItems, state, cancellationToken);
+        if (habitItems.Count > 0)
+            ragTasks["Habit"] = _ragRetriever.RetrieveForGenerationAsync("Habit", assessment, habitItems, state, cancellationToken);
+        if (experimentItems.Count > 0)
+            ragTasks["Experiment"] = _ragRetriever.RetrieveForGenerationAsync("Experiment", assessment, experimentItems, state, cancellationToken);
+        if (goalMetricItems.Count > 0)
+            ragTasks["GoalMetric"] = _ragRetriever.RetrieveForGenerationAsync("GoalMetric", assessment, goalMetricItems, state, cancellationToken);
+        if (projectItems.Count > 0)
+            ragTasks["Project"] = _ragRetriever.RetrieveForGenerationAsync("Project", assessment, projectItems, state, cancellationToken);
+
+        // Wait for all RAG retrievals
+        await Task.WhenAll(ragTasks.Values);
+
+        // Get RAG context for each domain
+        var ragContexts = new Dictionary<string, RagContext?>();
+        foreach (var kvp in ragTasks)
+            ragContexts[kvp.Key] = await kvp.Value;
+
+        // Store RAG contexts in trace
+        trace.GenerationRag = ragContexts.Values.Where(r => r is not null).ToList()!;
+
+        // Launch domain prompts in parallel
+        var generationTasks = new List<Task<List<RecommendationCandidate>>>();
+
+        if (taskItems.Count > 0)
+            generationTasks.Add(GenerateTaskDomainAsync(assessment, taskItems, state, ragContexts.GetValueOrDefault("Task"), cancellationToken));
 
         if (habitItems.Count > 0)
-            tasks.Add(GenerateHabitDomainAsync(assessment, habitItems, state, cancellationToken));
+            generationTasks.Add(GenerateHabitDomainAsync(assessment, habitItems, state, ragContexts.GetValueOrDefault("Habit"), cancellationToken));
 
         if (experimentItems.Count > 0)
-            tasks.Add(GenerateExperimentDomainAsync(assessment, experimentItems, state, state.Profile?.Preferences, state.Profile?.CurrentSeason, cancellationToken));
+            generationTasks.Add(GenerateExperimentDomainAsync(assessment, experimentItems, state, state.Profile?.Preferences, state.Profile?.CurrentSeason, ragContexts.GetValueOrDefault("Experiment"), cancellationToken));
 
         if (goalMetricItems.Count > 0)
-            tasks.Add(GenerateGoalMetricDomainAsync(assessment, goalMetricItems, state, state.Profile?.Values, state.Profile?.Roles, state.Profile?.CurrentSeason, cancellationToken));
+            generationTasks.Add(GenerateGoalMetricDomainAsync(assessment, goalMetricItems, state, state.Profile?.Values, state.Profile?.Roles, state.Profile?.CurrentSeason, ragContexts.GetValueOrDefault("GoalMetric"), cancellationToken));
 
         if (projectItems.Count > 0)
-            tasks.Add(GenerateProjectDomainAsync(assessment, projectItems, state, cancellationToken));
+            generationTasks.Add(GenerateProjectDomainAsync(assessment, projectItems, state, ragContexts.GetValueOrDefault("Project"), cancellationToken));
 
-        var results = await Task.WhenAll(tasks);
+        var results = await Task.WhenAll(generationTasks);
         foreach (var domainResults in results)
             all.AddRange(domainResults);
 
@@ -245,6 +288,7 @@ internal sealed class OpenAiLlmOrchestrator(
         SituationalAssessment assessment,
         List<InterventionPlanItem> interventions,
         UserStateSnapshot state,
+        RagContext? ragContext,
         CancellationToken cancellationToken)
     {
         var json = await CallOpenAiAsync(
@@ -259,7 +303,8 @@ internal sealed class OpenAiLlmOrchestrator(
                 state.Projects,
                 state.Goals,
                 state.Profile?.Roles,
-                state.Profile?.Values),
+                state.Profile?.Values,
+                ragContext),
             TaskGenerationPrompt.SchemaName,
             TaskGenerationPrompt.ResponseSchema,
             cancellationToken);
@@ -273,6 +318,7 @@ internal sealed class OpenAiLlmOrchestrator(
         SituationalAssessment assessment,
         List<InterventionPlanItem> interventions,
         UserStateSnapshot state,
+        RagContext? ragContext,
         CancellationToken cancellationToken)
     {
         var json = await CallOpenAiAsync(
@@ -286,7 +332,8 @@ internal sealed class OpenAiLlmOrchestrator(
                 state.Profile?.Values,
                 state.Profile?.Roles,
                 state.MetricDefinitions,
-                state.Today),
+                state.Today,
+                ragContext),
             HabitGenerationPrompt.SchemaName,
             HabitGenerationPrompt.ResponseSchema,
             cancellationToken);
@@ -302,6 +349,7 @@ internal sealed class OpenAiLlmOrchestrator(
         UserStateSnapshot state,
         PreferencesSnapshot? preferences,
         SeasonSnapshot? season,
+        RagContext? ragContext,
         CancellationToken cancellationToken)
     {
         var json = await CallOpenAiAsync(
@@ -314,7 +362,8 @@ internal sealed class OpenAiLlmOrchestrator(
                 state.MetricDefinitions,
                 state.Goals,
                 preferences,
-                season),
+                season,
+                ragContext),
             ExperimentGenerationPrompt.SchemaName,
             ExperimentGenerationPrompt.ResponseSchema,
             cancellationToken);
@@ -331,6 +380,7 @@ internal sealed class OpenAiLlmOrchestrator(
         IReadOnlyList<UserValueSnapshot>? values,
         IReadOnlyList<UserRoleSnapshot>? roles,
         SeasonSnapshot? season,
+        RagContext? ragContext,
         CancellationToken cancellationToken)
     {
         var json = await CallOpenAiAsync(
@@ -344,7 +394,8 @@ internal sealed class OpenAiLlmOrchestrator(
                 state.MetricDefinitions,
                 values,
                 roles,
-                season),
+                season,
+                ragContext),
             GoalMetricGenerationPrompt.SchemaName,
             GoalMetricGenerationPrompt.ResponseSchema,
             cancellationToken);
@@ -358,6 +409,7 @@ internal sealed class OpenAiLlmOrchestrator(
         SituationalAssessment assessment,
         List<InterventionPlanItem> interventions,
         UserStateSnapshot state,
+        RagContext? ragContext,
         CancellationToken cancellationToken)
     {
         var json = await CallOpenAiAsync(
@@ -372,7 +424,8 @@ internal sealed class OpenAiLlmOrchestrator(
                 state.Today,
                 state.Profile?.CurrentSeason,
                 state.Profile?.Roles,
-                state.Profile?.Values),
+                state.Profile?.Values,
+                ragContext),
             ProjectGenerationPrompt.SchemaName,
             ProjectGenerationPrompt.ResponseSchema,
             cancellationToken);
@@ -447,6 +500,118 @@ internal sealed class OpenAiLlmOrchestrator(
     }
 
     // ─────────────────────────────────────────────────────────────────
+    // Conflict detection and deduplication
+    // ─────────────────────────────────────────────────────────────────
+
+    private List<RecommendationCandidate> RemoveConflictingRecommendations(List<RecommendationCandidate> candidates)
+    {
+        if (candidates.Count <= 1)
+            return candidates;
+
+        var result = new List<RecommendationCandidate>();
+        var seenTargets = new HashSet<(RecommendationType Type, Guid? EntityId)>();
+        var hasCheckInNudge = false;
+        var hasCheckInExperiment = false;
+        var habitBehaviors = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var experimentBehaviors = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Sort by score descending so higher-scored recommendations are kept
+        var sorted = candidates.OrderByDescending(c => c.Score).ToList();
+
+        foreach (var candidate in sorted)
+        {
+            // Rule 1: No duplicate (Type, EntityId) combinations
+            var key = (candidate.Type, candidate.Target.EntityId);
+            if (seenTargets.Contains(key))
+            {
+                _logger.LogDebug(
+                    "Removed duplicate recommendation: {Type} for entity {EntityId}",
+                    candidate.Type, candidate.Target.EntityId);
+                continue;
+            }
+
+            // Rule 2: No CheckInConsistencyNudge if there's already an experiment about check-ins
+            if (candidate.Type == Domain.Enums.RecommendationType.CheckInConsistencyNudge)
+            {
+                if (hasCheckInExperiment)
+                {
+                    _logger.LogDebug("Removed CheckInConsistencyNudge due to existing check-in experiment");
+                    continue;
+                }
+                hasCheckInNudge = true;
+            }
+
+            // Rule 3: No experiment about check-ins if there's already a CheckInConsistencyNudge
+            if (candidate.Type == Domain.Enums.RecommendationType.ExperimentRecommendation)
+            {
+                var titleLower = candidate.Title.ToLowerInvariant();
+                if (titleLower.Contains("check-in") || titleLower.Contains("checkin"))
+                {
+                    if (hasCheckInNudge)
+                    {
+                        _logger.LogDebug("Removed check-in experiment due to existing CheckInConsistencyNudge");
+                        continue;
+                    }
+                    hasCheckInExperiment = true;
+                }
+            }
+
+            // Rule 4: No HabitFromLeadMetricSuggestion + ExperimentRecommendation for same behavior
+            if (candidate.Type == Domain.Enums.RecommendationType.HabitFromLeadMetricSuggestion)
+            {
+                var behavior = ExtractBehaviorKeyword(candidate.Title);
+                if (experimentBehaviors.Contains(behavior))
+                {
+                    _logger.LogDebug("Removed HabitFromLeadMetricSuggestion due to existing experiment for '{Behavior}'", behavior);
+                    continue;
+                }
+                habitBehaviors.Add(behavior);
+            }
+
+            if (candidate.Type == Domain.Enums.RecommendationType.ExperimentRecommendation)
+            {
+                var behavior = ExtractBehaviorKeyword(candidate.Title);
+                if (habitBehaviors.Contains(behavior))
+                {
+                    _logger.LogDebug("Removed ExperimentRecommendation due to existing habit suggestion for '{Behavior}'", behavior);
+                    continue;
+                }
+                experimentBehaviors.Add(behavior);
+            }
+
+            seenTargets.Add(key);
+            result.Add(candidate);
+        }
+
+        if (result.Count < candidates.Count)
+        {
+            _logger.LogInformation(
+                "Removed {Count} conflicting recommendations ({Before} -> {After})",
+                candidates.Count - result.Count, candidates.Count, result.Count);
+        }
+
+        return result;
+    }
+
+    private static string ExtractBehaviorKeyword(string title)
+    {
+        // Extract a normalized behavior keyword from the title for conflict matching
+        // e.g., "Create daily outreach habit" -> "outreach"
+        // e.g., "Experiment: Daily outreach tracking" -> "outreach"
+        var normalized = title.ToLowerInvariant()
+            .Replace("experiment:", "")
+            .Replace("create", "")
+            .Replace("daily", "")
+            .Replace("habit", "")
+            .Replace("suggestion", "")
+            .Trim();
+
+        // Return first significant word (>3 chars)
+        var words = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return words.FirstOrDefault(w => w.Length > 3) ?? normalized;
+    }
+
+    // ─────────────────────────────────────────────────────────────────
     // Trace model (stored in RawResponse for explainability)
     // ─────────────────────────────────────────────────────────────────
 
@@ -460,5 +625,14 @@ internal sealed class OpenAiLlmOrchestrator(
 
         [JsonPropertyName("generated")]
         public List<RecommendationCandidate>? Generated { get; set; }
+
+        [JsonPropertyName("assessmentRag")]
+        public RagContext? AssessmentRag { get; set; }
+
+        [JsonPropertyName("strategyRag")]
+        public RagContext? StrategyRag { get; set; }
+
+        [JsonPropertyName("generationRag")]
+        public List<RagContext>? GenerationRag { get; set; }
     }
 }

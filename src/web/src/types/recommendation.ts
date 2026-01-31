@@ -9,6 +9,7 @@ export type RecommendationType =
   | 'ScheduleAdjustmentSuggestion'
   | 'ProjectStuckFix'
   | 'ProjectSuggestion'
+  | 'ProjectGoalLinkSuggestion'
   | 'ExperimentRecommendation'
   | 'GoalScoreboardSuggestion'
   | 'HabitFromLeadMetricSuggestion'
@@ -182,6 +183,7 @@ export const recommendationTypeInfo: Record<RecommendationType, { label: string;
   ScheduleAdjustmentSuggestion: { label: 'Schedule Adjustment', description: 'Suggested schedule change', color: 'text-teal-400', bgColor: 'bg-teal-500/10' },
   ProjectStuckFix: { label: 'Project Unstick', description: 'Action to unblock a stuck project', color: 'text-rose-400', bgColor: 'bg-rose-500/10' },
   ProjectSuggestion: { label: 'New Project', description: 'Suggested project to organize work', color: 'text-pink-400', bgColor: 'bg-pink-500/10' },
+  ProjectGoalLinkSuggestion: { label: 'Link to Goal', description: 'Link a project to a related goal', color: 'text-fuchsia-400', bgColor: 'bg-fuchsia-500/10' },
   ExperimentRecommendation: { label: 'Experiment', description: 'Suggested experiment to run', color: 'text-violet-400', bgColor: 'bg-violet-500/10' },
   GoalScoreboardSuggestion: { label: 'Goal Scoreboard', description: 'Improve goal measurement setup', color: 'text-amber-400', bgColor: 'bg-amber-500/10' },
   HabitFromLeadMetricSuggestion: { label: 'Habit from Metric', description: 'Create a habit to drive a lead metric', color: 'text-lime-400', bgColor: 'bg-lime-500/10' },

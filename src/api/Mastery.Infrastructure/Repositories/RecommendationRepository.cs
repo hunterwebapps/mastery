@@ -102,4 +102,20 @@ public class RecommendationRepository : BaseRepository<Recommendation>, IRecomme
         return await DbSet
             .AnyAsync(r => r.Id == id && r.UserId == userId, cancellationToken);
     }
+
+    public async Task<bool> ExistsPendingForTargetAsync(
+        string userId,
+        RecommendationType type,
+        RecommendationTargetKind targetKind,
+        Guid? targetEntityId,
+        CancellationToken cancellationToken = default)
+    {
+        return await DbSet
+            .AnyAsync(r => r.UserId == userId &&
+                          r.Type == type &&
+                          r.Target.Kind == targetKind &&
+                          r.Target.EntityId == targetEntityId &&
+                          (r.Status == RecommendationStatus.Pending || r.Status == RecommendationStatus.Snoozed),
+                      cancellationToken);
+    }
 }

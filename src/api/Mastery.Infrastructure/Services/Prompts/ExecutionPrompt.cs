@@ -58,6 +58,7 @@ internal static class ExecutionPrompt
             - ProjectSuggestion (Create) → create_project
             - ProjectEditSuggestion (Update) → update_project
             - ProjectArchiveSuggestion (Remove) → archive_project
+            - ProjectGoalLinkSuggestion (Update) → update_project with goalId from payload
 
             ## Important Notes
             - Always use the exact field values from the ActionPayload

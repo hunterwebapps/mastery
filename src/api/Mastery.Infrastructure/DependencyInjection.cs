@@ -105,6 +105,13 @@ public static class DependencyInjection
         services.Configure<OpenAiOptions>(opts =>
             configuration.GetSection(OpenAiOptions.SectionName).Bind(opts));
 
+        // RAG configuration
+        services.Configure<RagOptions>(opts =>
+            configuration.GetSection(RagOptions.SectionName).Bind(opts));
+
+        // RAG context retriever (Scoped for per-request embedding cache)
+        services.AddScoped<IRagContextRetriever, RagContextRetriever>();
+
         // OpenAI recommendation orchestrator
         services.AddScoped<LlmResponseParser>();
         services.AddScoped<IRecommendationOrchestrator, OpenAiLlmOrchestrator>();

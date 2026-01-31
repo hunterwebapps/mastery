@@ -33,6 +33,7 @@ public enum RecommendationType
     ProjectSuggestion,
     ProjectEditSuggestion,
     ProjectArchiveSuggestion,
+    ProjectGoalLinkSuggestion,
 
     // Metric Edit suggestion
     MetricEditSuggestion,

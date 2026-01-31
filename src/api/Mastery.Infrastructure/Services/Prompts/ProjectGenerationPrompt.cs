@@ -1,4 +1,5 @@
 using System.Text;
+using Mastery.Application.Common.Models;
 using Mastery.Domain.Diagnostics.Snapshots;
 using Mastery.Domain.Enums;
 using TaskStatus = Mastery.Domain.Enums.TaskStatus;
@@ -7,7 +8,7 @@ namespace Mastery.Infrastructure.Services.Prompts;
 
 /// <summary>
 /// Stage 3 (Project Domain): Generates project-related recommendations.
-/// Handles: ProjectStuckFix, ProjectSuggestion, ProjectEditSuggestion, ProjectArchiveSuggestion
+/// Handles: ProjectStuckFix, ProjectSuggestion, ProjectEditSuggestion, ProjectArchiveSuggestion, ProjectGoalLinkSuggestion
 /// </summary>
 internal static class ProjectGenerationPrompt
 {
@@ -162,6 +163,32 @@ internal static class ProjectGenerationPrompt
                     },
                     "required": ["type", "targetKind", "targetEntityId", "targetEntityTitle", "actionKind", "title", "rationale", "score", "actionPayload"],
                     "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": { "type": "string", "enum": ["ProjectGoalLinkSuggestion"] },
+                      "targetKind": { "type": "string", "enum": ["Project"] },
+                      "targetEntityId": { "type": "string" },
+                      "targetEntityTitle": { "type": "string" },
+                      "actionKind": { "type": "string", "enum": ["Update"] },
+                      "title": { "type": "string" },
+                      "rationale": { "type": "string" },
+                      "score": { "type": "number" },
+                      "actionPayload": {
+                        "type": "object",
+                        "properties": {
+                          "projectId": { "type": "string" },
+                          "goalId": { "type": "string" },
+                          "goalTitle": { "type": "string" },
+                          "_summary": { "type": "string" }
+                        },
+                        "required": ["projectId", "goalId", "goalTitle", "_summary"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": ["type", "targetKind", "targetEntityId", "targetEntityTitle", "actionKind", "title", "rationale", "score", "actionPayload"],
+                    "additionalProperties": false
                   }
                 ]
               }
@@ -184,18 +211,25 @@ internal static class ProjectGenerationPrompt
 
             ### ProjectStuckFix (ActionKind: Update)
             Unblock a stuck project (active but no next action) by either:
-            - Suggesting an existing task as the next action, OR
-            - Suggesting a new task to create and set as next action
+            - Suggesting an existing task as the next action (PREFERRED), OR
+            - Suggesting a new task to create and set as next action (only if no suitable existing task)
+
+            IMPORTANT: Always check if the project already has tasks that could be the next action.
+            Use suggestedNextTaskId when an existing task fits. Only use suggestedNewTask when:
+            - No tasks exist for the project, OR
+            - All existing tasks are too large (>120 min), OR
+            - Existing tasks are blocked or not appropriate for the current phase
+
             actionPayload: {
               "projectId": "guid-string",
-              "suggestedNextTaskId": "guid-string (if using existing task)" OR null,
+              "suggestedNextTaskId": "guid-string (PREFERRED: use existing task)" OR null,
               "suggestedNewTask": {
                 "title": "string",
                 "description": "string or null",
                 "estMinutes": number (10-120),
                 "energyCost": number (1-5),
                 "priority": number (1-5)
-              } OR null,
+              } OR null (only if no suitable existing task),
               "_summary": "Set 'Review architecture doc' as next action"
             }
 
@@ -232,6 +266,16 @@ internal static class ProjectGenerationPrompt
               "_summary": "Archive completed project"
             }
 
+            ### ProjectGoalLinkSuggestion (ActionKind: Update)
+            Suggest linking an unattached project to a relevant goal for better tracking.
+            Use when: Project has no GoalId but clearly relates to an active goal by theme, title, or deadline alignment.
+            actionPayload: {
+              "projectId": "guid-string (the unlinked project)",
+              "goalId": "guid-string (the goal to link to)",
+              "goalTitle": "string (for display, e.g., 'Acquire an Additional Client')",
+              "_summary": "Link to 'Acquire an Additional Client' goal"
+            }
+
             ## Field Reference
 
             """ + SchemaReference.PrioritySchema + """
@@ -241,6 +285,7 @@ internal static class ProjectGenerationPrompt
             """ + SchemaReference.ProjectFieldGuidance + """
 
             ## Guidelines
+            - Score MUST be 0.0-1.0 where 0.0=minimal impact, 1.0=maximum urgency/impact (e.g., 0.85 for high priority)
             - Projects are execution containers that group tasks toward a goal
             - ProjectStuckFix is high priority: active projects without a next action block progress
             - When fixing stuck projects, prefer suggesting existing unscheduled tasks over creating new ones
@@ -261,7 +306,8 @@ internal static class ProjectGenerationPrompt
         DateOnly today,
         SeasonSnapshot? season = null,
         IReadOnlyList<UserRoleSnapshot>? roles = null,
-        IReadOnlyList<UserValueSnapshot>? values = null)
+        IReadOnlyList<UserValueSnapshot>? values = null,
+        RagContext? ragContext = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"# Assessment Summary: {assessment.CapacityStatus} capacity, {assessment.OverallMomentum} momentum");
@@ -304,49 +350,53 @@ internal static class ProjectGenerationPrompt
         }
         sb.AppendLine();
 
-        // Tasks available for next action (not completed, not scheduled)
-        var availableTasks = tasks
+        // All incomplete tasks (for context and next action suggestions)
+        var allIncompleteTasks = tasks
             .Where(t => t.Status != TaskStatus.Completed &&
                         t.Status != TaskStatus.Cancelled &&
-                        t.Status != TaskStatus.Archived &&
-                        t.ScheduledDate is null)
+                        t.Status != TaskStatus.Archived)
             .OrderBy(t => t.Priority)
             .ToList();
 
-        // Group tasks by project
-        var tasksByProject = availableTasks
+        // Unscheduled tasks are preferred for next action
+        var unscheduledTasks = allIncompleteTasks.Where(t => t.ScheduledDate is null).ToList();
+
+        // Group all project tasks by project (including scheduled)
+        var tasksByProject = allIncompleteTasks
             .Where(t => t.ProjectId.HasValue)
             .GroupBy(t => t.ProjectId!.Value)
             .ToDictionary(g => g.Key, g => g.ToList());
 
         if (tasksByProject.Count > 0)
         {
-            sb.AppendLine("# Available Tasks by Project (for next action suggestions)");
+            sb.AppendLine("# Project Tasks (for next action suggestions)");
+            sb.AppendLine("NOTE: Prefer unscheduled tasks for suggestedNextTaskId, but scheduled tasks can also be considered.");
             foreach (var kvp in tasksByProject.Take(10))
             {
                 var projectTitle = projects.FirstOrDefault(p => p.Id == kvp.Key)?.Title ?? "Unknown";
                 sb.AppendLine($"## Project: {projectTitle} ({kvp.Key})");
-                foreach (var t in kvp.Value.Take(5))
+                foreach (var t in kvp.Value.Take(8))
                 {
-                    sb.AppendLine($"  - [{t.Id}] \"{t.Title}\" | P{t.Priority} | Est:{t.EstMinutes ?? 0}min | Energy:{t.EnergyLevel}");
+                    var scheduledStatus = t.ScheduledDate is null ? "unscheduled" : $"scheduled:{t.ScheduledDate:MMM dd}";
+                    sb.AppendLine($"  - [{t.Id}] \"{t.Title}\" | P{t.Priority} | {t.Status} | {scheduledStatus} | Est:{t.EstMinutes ?? 0}min | Energy:{t.EnergyLevel}");
                 }
             }
             sb.AppendLine();
         }
 
-        // Goals for project linking
+        // Goals for project linking (include Draft for feedback)
         var activeGoals = goals
-            .Where(g => g.Status == GoalStatus.Active)
+            .Where(g => g.Status == GoalStatus.Active || g.Status == GoalStatus.Draft)
             .OrderBy(g => g.Priority)
             .ToList();
 
         if (activeGoals.Count > 0)
         {
-            sb.AppendLine($"# Active Goals ({activeGoals.Count}) - for project linking");
+            sb.AppendLine($"# Goals ({activeGoals.Count}) - for project linking");
             foreach (var g in activeGoals.Take(5))
             {
                 var deadline = g.Deadline?.ToString("MMM dd") ?? "no deadline";
-                sb.AppendLine($"- [{g.Id}] \"{g.Title}\" | P{g.Priority} | {deadline}");
+                sb.AppendLine($"- [{g.Id}] \"{g.Title}\" | Status:{g.Status} | P{g.Priority} | {deadline}");
             }
             sb.AppendLine();
         }
@@ -386,6 +436,19 @@ internal static class ProjectGenerationPrompt
             sb.AppendLine();
         }
 
+        // Unlinked projects (candidates for goal linking)
+        var unlinkedProjects = activeProjects.Where(p => p.GoalId is null).ToList();
+        if (unlinkedProjects.Count > 0 && activeGoals.Count > 0)
+        {
+            sb.AppendLine($"# Unlinked Projects ({unlinkedProjects.Count}) - consider linking to goals via ProjectGoalLinkSuggestion");
+            sb.AppendLine("These projects have NO GoalId set. Consider suggesting a link if a goal clearly relates.");
+            foreach (var p in unlinkedProjects)
+            {
+                sb.AppendLine($"- [{p.Id}] \"{p.Title}\" | P{p.Priority} | {p.TargetEndDate?.ToString("MMM dd") ?? "no deadline"} | NO GOAL LINKED");
+            }
+            sb.AppendLine();
+        }
+
         // Add critical constraints to prevent hallucinated IDs
         sb.AppendLine("## CRITICAL CONSTRAINTS");
         sb.AppendLine("- For Update/Remove actions, you MUST use IDs from the lists above.");
@@ -393,16 +456,27 @@ internal static class ProjectGenerationPrompt
             sb.AppendLine($"- VALID PROJECT IDS: {string.Join(", ", activeProjects.Select(p => p.Id))}");
         else
             sb.AppendLine("- NO PROJECTS EXIST. Only generate ProjectSuggestion (Create) with targetEntityId: null.");
-        if (availableTasks.Count > 0)
-            sb.AppendLine($"- VALID TASK IDS (for suggestedNextTaskId): {string.Join(", ", availableTasks.Select(t => t.Id))}");
+
+        // Task constraints for ProjectStuckFix
+        var projectTaskIds = tasksByProject.SelectMany(kvp => kvp.Value).Select(t => t.Id).ToList();
+        if (projectTaskIds.Count > 0)
+        {
+            sb.AppendLine($"- VALID TASK IDS (for suggestedNextTaskId): {string.Join(", ", projectTaskIds)}");
+            sb.AppendLine("- PREFER suggestedNextTaskId over suggestedNewTask when an existing task fits the project");
+            sb.AppendLine("- Only create suggestedNewTask if existing tasks are too large, wrong scope, or blocked");
+        }
         else
-            sb.AppendLine("- NO AVAILABLE TASKS. For ProjectStuckFix, use suggestedNewTask instead of suggestedNextTaskId.");
+            sb.AppendLine("- NO PROJECT TASKS EXIST. For ProjectStuckFix, use suggestedNewTask instead of suggestedNextTaskId.");
+
         if (activeGoals.Count > 0)
             sb.AppendLine($"- VALID GOAL IDS (for goalId): {string.Join(", ", activeGoals.Select(g => g.Id))}");
         else
             sb.AppendLine("- NO GOALS EXIST. Set goalId to null in ProjectSuggestion payloads.");
         sb.AppendLine("- Do NOT invent or hallucinate entity IDs. Only use IDs that appear in the lists above.");
         sb.AppendLine();
+
+        // Add RAG historical context if available
+        RagContextFormatter.AppendIfPresent(sb, ragContext, "Related Project History");
 
         sb.AppendLine("Generate recommendations for each intervention plan item assigned to you.");
 

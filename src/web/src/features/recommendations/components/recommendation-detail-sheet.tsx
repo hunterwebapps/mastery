@@ -14,6 +14,7 @@ import {
   Loader2,
   Pencil,
   Trash2,
+  Link2,
 } from 'lucide-react'
 import {
   Sheet,
@@ -49,6 +50,7 @@ const typeIcons: Record<RecommendationType, React.ElementType> = {
   ScheduleAdjustmentSuggestion: Clock,
   ProjectStuckFix: AlertTriangle,
   ProjectSuggestion: Lightbulb,
+  ProjectGoalLinkSuggestion: Link2,
   ExperimentRecommendation: Lightbulb,
   GoalScoreboardSuggestion: Target,
   HabitFromLeadMetricSuggestion: Activity,

@@ -38,4 +38,15 @@ public interface IRecommendationRepository : IRepository<Recommendation>
         Guid id,
         string userId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Checks if a pending recommendation already exists for a specific target entity and type.
+    /// Used for deduplication to avoid creating multiple similar recommendations.
+    /// </summary>
+    Task<bool> ExistsPendingForTargetAsync(
+        string userId,
+        RecommendationType type,
+        RecommendationTargetKind targetKind,
+        Guid? targetEntityId,
+        CancellationToken cancellationToken = default);
 }

@@ -96,8 +96,11 @@ internal sealed class LlmResponseParser
             return null;
         }
 
-        // Clamp score to 0-100
-        var score = Math.Clamp(item.Score, 0m, 100m);
+        // Normalize score to 0-1 scale
+        // LLM may return 0-1 (correct) or 0-100 (legacy) - normalize both to 0-1
+        var score = item.Score > 1m
+            ? Math.Clamp(item.Score / 100m, 0m, 1m)  // Normalize 0-100 to 0-1
+            : Math.Clamp(item.Score, 0m, 1m);
 
         // Serialize action payload and extract _summary
         string? payloadJson = null;
