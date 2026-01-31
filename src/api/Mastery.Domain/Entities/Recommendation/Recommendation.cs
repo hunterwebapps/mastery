@@ -22,7 +22,6 @@ public sealed class Recommendation : OwnedEntity, IAggregateRoot
     public string? ActionSummary { get; private set; }
     public decimal Score { get; private set; }
     public DateTime? ExpiresAt { get; private set; }
-    [EmbeddingIgnore]
     public DateTime? RespondedAt { get; private set; }
     public string? DismissReason { get; private set; }
 

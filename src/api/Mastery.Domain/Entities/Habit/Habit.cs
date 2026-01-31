@@ -91,13 +91,11 @@ public sealed class Habit : OwnedEntity, IAggregateRoot
     /// <summary>
     /// Current streak count (computed, for projections).
     /// </summary>
-    [EmbeddingIgnore]
     public int CurrentStreak { get; private set; }
 
     /// <summary>
     /// 7-day adherence rate (computed, for projections).
     /// </summary>
-    [EmbeddingIgnore]
     public decimal AdherenceRate7Day { get; private set; }
 
     private Habit() { } // EF Core

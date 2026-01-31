@@ -49,6 +49,9 @@ public static class DependencyInjection
         services.AddScoped<IUnitOfWork>(provider =>
             provider.GetRequiredService<MasteryDbContext>());
 
+        // Register Domain Event Dispatcher for transactional event handling
+        services.AddScoped<IDomainEventDispatcher, DomainEventDispatcher>();
+
         // Register repositories
         services.AddScoped<IUserProfileRepository, UserProfileRepository>();
         services.AddScoped<ISeasonRepository, SeasonRepository>();

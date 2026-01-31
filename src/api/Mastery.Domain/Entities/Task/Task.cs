@@ -114,7 +114,6 @@ public sealed class Task : OwnedEntity, IAggregateRoot
     /// <summary>
     /// Number of times this task has been rescheduled.
     /// </summary>
-    [EmbeddingIgnore]
     public int RescheduleCount { get; private set; }
 
     #endregion

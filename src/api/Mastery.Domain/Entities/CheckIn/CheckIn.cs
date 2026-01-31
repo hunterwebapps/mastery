@@ -15,7 +15,6 @@ public sealed class CheckIn : OwnedEntity, IAggregateRoot
     /// <summary>
     /// The user-local date this check-in is for.
     /// </summary>
-    [EmbeddingIgnore]
     public DateOnly CheckInDate { get; private set; }
 
     /// <summary>

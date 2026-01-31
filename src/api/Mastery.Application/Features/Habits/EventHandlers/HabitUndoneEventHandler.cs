@@ -6,23 +6,13 @@ namespace Mastery.Application.Features.Habits.EventHandlers;
 
 /// <summary>
 /// Marks related MetricObservations as corrected when a habit completion is undone.
+/// Note: SaveChangesAsync is NOT called here - changes are committed by the parent transaction.
 /// </summary>
-public sealed class HabitUndoneEventHandler : INotificationHandler<HabitUndoneEvent>
+public sealed class HabitUndoneEventHandler(
+    IHabitRepository _habitRepository,
+    IMetricObservationRepository _observationRepository)
+    : INotificationHandler<HabitUndoneEvent>
 {
-    private readonly IHabitRepository _habitRepository;
-    private readonly IMetricObservationRepository _observationRepository;
-    private readonly IUnitOfWork _unitOfWork;
-
-    public HabitUndoneEventHandler(
-        IHabitRepository habitRepository,
-        IMetricObservationRepository observationRepository,
-        IUnitOfWork unitOfWork)
-    {
-        _habitRepository = habitRepository;
-        _observationRepository = observationRepository;
-        _unitOfWork = unitOfWork;
-    }
-
     public async Task Handle(HabitUndoneEvent notification, CancellationToken cancellationToken)
     {
         // Find all observations with this correlation ID and mark them as corrected
@@ -42,7 +32,5 @@ public sealed class HabitUndoneEventHandler : INotificationHandler<HabitUndoneEv
             var streak = await _habitRepository.CalculateStreakAsync(notification.HabitId, cancellationToken);
             habit.UpdateStreak(streak);
         }
-
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
     }
 }

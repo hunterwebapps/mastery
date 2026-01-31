@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Reflection;
 using Mastery.Application.Common.Interfaces;
 using Mastery.Domain.Common;
@@ -16,8 +17,6 @@ using Mastery.Domain.Interfaces;
 using Mastery.Infrastructure.Identity;
 using Mastery.Infrastructure.Messaging;
 using Mastery.Infrastructure.Messaging.Events;
-using Mastery.Infrastructure.Outbox;
-using MediatR;
 using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -31,7 +30,7 @@ public class MasteryDbContext(
     DbContextOptions<MasteryDbContext> options,
     ICurrentUserService _currentUserService,
     IDateTimeProvider _dateTimeProvider,
-    IPublisher _publisher,
+    IDomainEventDispatcher _domainEventDispatcher,
     IMessageBus _messageBus,
     IOptions<ServiceBusOptions> _serviceBusOptions,
     ILogger<MasteryDbContext> _logger)
@@ -59,7 +58,6 @@ public class MasteryDbContext(
     public DbSet<RecommendationTrace> RecommendationTraces => Set<RecommendationTrace>();
     public DbSet<RecommendationRunHistory> RecommendationRunHistory => Set<RecommendationRunHistory>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
-    public DbSet<OutboxEntry> OutboxEntries => Set<OutboxEntry>();
     public DbSet<SignalEntry> SignalEntries => Set<SignalEntry>();
     public DbSet<SignalProcessingHistory> SignalProcessingHistory => Set<SignalProcessingHistory>();
 
@@ -74,217 +72,142 @@ public class MasteryDbContext(
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
-        // 1. Capture outbox entries BEFORE save (entity state changes after save)
-        var outboxEntries = CaptureOutboxEntries();
+        // 1. Dispatch domain events BEFORE commit (handlers run within the same transaction)
+        // This allows cascading events and ensures all changes are committed together
+        await _domainEventDispatcher.DispatchEventsAsync(cancellationToken);
 
-        // 2. Capture domain events BEFORE save (they get cleared after dispatch)
-        var domainEvents = CaptureDomainEvents();
+        // 2. Collect Service Bus snapshots from all entities with domain events
+        var entityChangeSnapshots = CollectServiceBusSnapshots();
 
         // 3. Apply audit fields
-        foreach (var entry in ChangeTracker.Entries<AuditableEntity>())
-        {
-            switch (entry.State)
-            {
-                case EntityState.Added:
-                    entry.Entity.CreatedBy = _currentUserService.UserId;
-                    entry.Entity.CreatedAt = _dateTimeProvider.UtcNow;
-                    break;
+        ApplyAuditFields();
 
-                case EntityState.Modified:
-                    entry.Entity.ModifiedBy = _currentUserService.UserId;
-                    entry.Entity.ModifiedAt = _dateTimeProvider.UtcNow;
-                    break;
-            }
-        }
-
-        // 4. Add outbox entries to the same transaction (when Service Bus is disabled)
-        // When Service Bus is enabled, we still add to outbox for idempotency, but also publish to Service Bus
-        if (outboxEntries.Count > 0)
-        {
-            await OutboxEntries.AddRangeAsync(outboxEntries, cancellationToken);
-        }
-
-        // 5. Save changes
+        // 4. Single commit - all changes from command handler AND event handlers
         var result = await base.SaveChangesAsync(cancellationToken);
 
-        // 6. Dispatch domain events AFTER successful save
-        await DispatchDomainEventsAsync(domainEvents, cancellationToken);
-
-        // 7. Publish to Service Bus after successful save (when enabled)
-        if (outboxEntries.Count > 0)
-        {
-            await PublishToServiceBusAsync(outboxEntries, cancellationToken);
-        }
+        // 5. Publish to Service Bus after successful save (for embedding generation)
+        await PublishToServiceBusAsync(entityChangeSnapshots, cancellationToken);
 
         return result;
     }
 
-    /// <summary>
-    /// Publishes outbox entries to Service Bus as a batch for efficient processing.
-    /// Called after successful save when Service Bus is enabled.
-    /// </summary>
-    private async System.Threading.Tasks.Task PublishToServiceBusAsync(
-        List<OutboxEntry> outboxEntries,
-        CancellationToken cancellationToken)
+    private List<EntityChangeSnapshot> CollectServiceBusSnapshots()
     {
-        try
-        {
-            var events = outboxEntries
-                .Select(entry => new EntityChangedEvent
-                {
-                    EntityType = entry.EntityType,
-                    EntityId = entry.EntityId,
-                    Operation = entry.Operation,
-                    UserId = entry.UserId,
-                    DomainEventType = entry.DomainEventType,
-                    CreatedAt = entry.CreatedAt
-                })
-                .ToList();
-
-            var batch = new EntityChangedBatchEvent
-            {
-                Events = events,
-            };
-
-            await _messageBus.PublishAsync(
-                _serviceBusOptions.Value.EmbeddingsQueueName,
-                batch,
-                cancellationToken);
-
-            _logger.LogDebug("Published batch of {Count} entity changes to Service Bus", events.Count);
-        }
-        catch (Exception ex)
-        {
-            // Log but don't fail - the outbox entries are persisted for SQL-based retry
-            _logger.LogError(ex,
-                "Failed to publish batch of {Count} entities to Service Bus, will be processed via outbox",
-                outboxEntries.Count);
-        }
-    }
-
-    /// <summary>
-    /// Captures all domain events from tracked entities.
-    /// </summary>
-    private List<(IDomainEvent Event, string? UserId)> CaptureDomainEvents()
-    {
-        var events = new List<(IDomainEvent, string?)>();
+        var snapshots = new List<EntityChangeSnapshot>();
 
         foreach (var entry in ChangeTracker.Entries<BaseEntity>())
         {
-            if (entry.Entity.DomainEvents.Count == 0)
+            if (!HasEmbeddingRelevantChanges(entry))
+            {
                 continue;
-
-            // Try to get UserId from the entity
-            string? userId = null;
-            if (entry.Entity is OwnedEntity ownedEntity)
-            {
-                userId = ownedEntity.UserId;
             }
 
-            foreach (var domainEvent in entry.Entity.DomainEvents)
+            if (entry.Entity is OwnedEntity ownedEntity &&
+                (entry.State == EntityState.Added ||
+                 entry.State == EntityState.Modified ||
+                 entry.State == EntityState.Deleted))
             {
-                events.Add((domainEvent, userId));
+                snapshots.Add(new EntityChangeSnapshot(
+                    EntityType: entry.Entity.GetType().Name,
+                    EntityId: entry.Entity.Id,
+                    Operation: entry.State switch
+                    {
+                        EntityState.Added => "Created",
+                        EntityState.Modified => "Updated",
+                        EntityState.Deleted => "Deleted",
+                        _ => "Unknown"
+                    },
+                    UserId: ownedEntity.UserId,
+                    DomainEventTypes: []
+                ));
             }
-
-            // Clear events from the entity
-            entry.Entity.ClearDomainEvents();
         }
 
-        return events;
+        return snapshots;
     }
 
+    private void ApplyAuditFields()
+    {
+        foreach (var entry in ChangeTracker.Entries<BaseEntity>())
+        {
+            if (entry.Entity is AuditableEntity auditableEntry)
+            {
+                switch (entry.State)
+                {
+                    case EntityState.Added:
+                        auditableEntry.CreatedBy = _currentUserService.UserId;
+                        auditableEntry.CreatedAt = _dateTimeProvider.UtcNow;
+                        break;
+
+                    case EntityState.Modified:
+                        auditableEntry.ModifiedBy = _currentUserService.UserId;
+                        auditableEntry.ModifiedAt = _dateTimeProvider.UtcNow;
+                        break;
+                }
+            }
+        }
+    }
+
+    private sealed record EntityChangeSnapshot(
+        string EntityType,
+        Guid EntityId,
+        string Operation,
+        string UserId,
+        string[] DomainEventTypes);
+
     /// <summary>
-    /// Dispatches domain events via MediatR for event handlers.
-    /// Signal creation is now handled by OutboxProcessingWorker after embeddings are generated.
+    /// Publishes entity change events to Service Bus as batched events (per user).
+    /// Called after successful save for embedding generation pipeline.
     /// </summary>
-    private async System.Threading.Tasks.Task DispatchDomainEventsAsync(
-        List<(IDomainEvent Event, string? UserId)> events,
+    private async System.Threading.Tasks.Task PublishToServiceBusAsync(
+        List<EntityChangeSnapshot> snapshots,
         CancellationToken cancellationToken)
     {
-        if (events.Count == 0)
+        if (snapshots.Count == 0)
             return;
 
-        foreach (var (domainEvent, userId) in events)
+        // Group by user for batching
+        var snapshotsByUser = snapshots.GroupBy(s => s.UserId);
+
+        foreach (var userGroup in snapshotsByUser)
         {
+            var batch = new EntityChangedBatchEvent
+            {
+                CorrelationId = Activity.Current?.Id,
+            };
+
+            foreach (var snapshot in userGroup)
+            {
+                batch.Events.Add(new EntityChangedEvent
+                {
+                    EntityType = snapshot.EntityType,
+                    EntityId = snapshot.EntityId,
+                    Operation = snapshot.Operation,
+                    UserId = snapshot.UserId,
+                    DomainEventTypes = snapshot.DomainEventTypes,
+                    CreatedAt = _dateTimeProvider.UtcNow
+                });
+            }
+
             try
             {
-                // Publish via MediatR (for event handlers like metric observation creation)
-                await _publisher.Publish(domainEvent, cancellationToken);
+                await _messageBus.PublishAsync(
+                    _serviceBusOptions.Value.EmbeddingsQueueName,
+                    batch,
+                    cancellationToken);
+
+                _logger.LogDebug(
+                    "Published batch of {Count} entity changes to Service Bus for user {UserId}",
+                    batch.Events.Count, userGroup.Key);
             }
             catch (Exception ex)
             {
-                // Log but don't fail - domain events are best-effort
+                // Log but don't fail - Service Bus DLQ will handle retries
                 _logger.LogError(ex,
-                    "Error dispatching domain event {EventType} for user {UserId}",
-                    domainEvent.GetType().Name, userId);
+                    "Failed to publish batch of {Count} entities to Service Bus for user {UserId}",
+                    userGroup.Count(), userGroup.Key);
             }
         }
-    }
-
-    /// <summary>
-    /// Captures entity changes for aggregate roots to be processed by the outbox worker.
-    /// Creates one OutboxEntry per domain event (for signal classification).
-    /// Skips entities with class-level [EmbeddingIgnore] on Added/Modified.
-    /// Skips modifications when only [EmbeddingIgnore] properties changed.
-    /// </summary>
-    private List<OutboxEntry> CaptureOutboxEntries()
-    {
-        var entries = new List<OutboxEntry>();
-        var now = _dateTimeProvider.UtcNow;
-
-        foreach (var entry in ChangeTracker.Entries<IAggregateRoot>())
-        {
-            if (entry.Entity is not AuditableEntity entity)
-            {
-                continue;
-            }
-
-            var entityType = entry.Entity.GetType();
-            var isClassIgnored = entityType.GetCustomAttribute<EmbeddingIgnoreAttribute>() is not null;
-
-            // For deletes, create single entry (no domain event)
-            if (entry.State == EntityState.Deleted)
-            {
-                string? userId = (entity as OwnedEntity)?.UserId;
-                entries.Add(OutboxEntry.Create(
-                    entityType.Name, entity.Id, "Deleted", userId, now, domainEventType: null));
-                continue;
-            }
-
-            // Skip if not a relevant state
-            if (entry.State != EntityState.Added && entry.State != EntityState.Modified) continue;
-
-            // Skip if class is embedding-ignored for Add/Modified
-            if (isClassIgnored) continue;
-            if (entry.State == EntityState.Modified && !HasEmbeddingRelevantChanges(entry)) continue;
-
-            // Create one OutboxEntry per domain event
-            var domainEvents = entry.Entity is BaseEntity baseEntity ? baseEntity.DomainEvents : [];
-            string? ownerId = (entity as OwnedEntity)?.UserId;
-            var operation = entry.State == EntityState.Added ? "Created" : "Updated";
-
-            if (domainEvents.Count > 0)
-            {
-                foreach (var domainEvent in domainEvents)
-                {
-                    entries.Add(OutboxEntry.Create(
-                        entityType.Name,
-                        entity.Id,
-                        operation,
-                        ownerId,
-                        now,
-                        domainEventType: domainEvent.GetType().Name));
-                }
-            }
-            else
-            {
-                // Entity change without domain event (rare, but handle it)
-                entries.Add(OutboxEntry.Create(
-                    entityType.Name, entity.Id, operation, ownerId, now, domainEventType: null));
-            }
-        }
-
-        return entries;
     }
 
     /// <summary>
@@ -295,15 +218,20 @@ public class MasteryDbContext(
     {
         var entityType = entry.Entity.GetType();
 
-        foreach (var property in entry.Properties)
+        var isClassIgnored = entityType.GetCustomAttribute<EmbeddingIgnoreAttribute>() is not null;
+        if (!isClassIgnored)
         {
-            if (!property.IsModified)
-                continue;
+            foreach (var property in entry.Properties)
+            {
+                if (!property.IsModified)
+                    continue;
 
-            var propertyInfo = entityType.GetProperty(property.Metadata.Name);
-            if (propertyInfo?.GetCustomAttribute<EmbeddingIgnoreAttribute>() is null)
-                return true;
+                var propertyInfo = entityType.GetProperty(property.Metadata.Name);
+                if (propertyInfo?.GetCustomAttribute<EmbeddingIgnoreAttribute>() is null)
+                    return true;
+            }
         }
+
 
         return false;
     }

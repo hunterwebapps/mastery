@@ -6,20 +6,12 @@ namespace Mastery.Application.Features.Tasks.EventHandlers;
 
 /// <summary>
 /// Marks related MetricObservations as corrected when a task completion is undone.
+/// Note: SaveChangesAsync is NOT called here - changes are committed by the parent transaction.
 /// </summary>
-public sealed class TaskCompletionUndoneEventHandler : INotificationHandler<TaskCompletionUndoneEvent>
+public sealed class TaskCompletionUndoneEventHandler(
+    IMetricObservationRepository _observationRepository)
+    : INotificationHandler<TaskCompletionUndoneEvent>
 {
-    private readonly IMetricObservationRepository _observationRepository;
-    private readonly IUnitOfWork _unitOfWork;
-
-    public TaskCompletionUndoneEventHandler(
-        IMetricObservationRepository observationRepository,
-        IUnitOfWork unitOfWork)
-    {
-        _observationRepository = observationRepository;
-        _unitOfWork = unitOfWork;
-    }
-
     public async Task Handle(TaskCompletionUndoneEvent notification, CancellationToken cancellationToken)
     {
         // Find all observations with this correlation ID and mark them as corrected
@@ -31,7 +23,5 @@ public sealed class TaskCompletionUndoneEventHandler : INotificationHandler<Task
             // Create a correction with value 0 to negate the observation
             observation.CreateCorrection(0, "Task completion undone");
         }
-
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
     }
 }

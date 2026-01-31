@@ -35,7 +35,6 @@ public sealed class Season : OwnedEntity, IAggregateRoot
     /// <summary>
     /// When this season actually ended (set when ending the season).
     /// </summary>
-    [EmbeddingIgnore]
     public DateOnly? ActualEndDate { get; private set; }
 
     /// <summary>

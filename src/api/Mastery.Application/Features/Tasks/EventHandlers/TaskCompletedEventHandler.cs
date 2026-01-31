@@ -9,23 +9,13 @@ namespace Mastery.Application.Features.Tasks.EventHandlers;
 /// <summary>
 /// Creates MetricObservations when a task is completed.
 /// This is the critical integration point between Tasks and the Metrics system.
+/// Note: SaveChangesAsync is NOT called here - changes are committed by the parent transaction.
 /// </summary>
-public sealed class TaskCompletedEventHandler : INotificationHandler<TaskCompletedEvent>
+public sealed class TaskCompletedEventHandler(
+    ITaskRepository _taskRepository,
+    IMetricObservationRepository _observationRepository)
+    : INotificationHandler<TaskCompletedEvent>
 {
-    private readonly ITaskRepository _taskRepository;
-    private readonly IMetricObservationRepository _observationRepository;
-    private readonly IUnitOfWork _unitOfWork;
-
-    public TaskCompletedEventHandler(
-        ITaskRepository taskRepository,
-        IMetricObservationRepository observationRepository,
-        IUnitOfWork unitOfWork)
-    {
-        _taskRepository = taskRepository;
-        _observationRepository = observationRepository;
-        _unitOfWork = unitOfWork;
-    }
-
     public async Task Handle(TaskCompletedEvent notification, CancellationToken cancellationToken)
     {
         // Get the task with its metric bindings
@@ -51,7 +41,5 @@ public sealed class TaskCompletedEventHandler : INotificationHandler<TaskComplet
 
             await _observationRepository.AddAsync(observation, cancellationToken);
         }
-
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
     }
 }

@@ -7,6 +7,7 @@ namespace Mastery.Domain.Entities.Signal;
 /// Tracks each signal processing cycle for auditability.
 /// Records which signals were processed, the assessment tier used, and outcomes.
 /// </summary>
+[EmbeddingIgnore]
 public sealed class SignalProcessingHistory : BaseEntity, IAggregateRoot
 {
     /// <summary>

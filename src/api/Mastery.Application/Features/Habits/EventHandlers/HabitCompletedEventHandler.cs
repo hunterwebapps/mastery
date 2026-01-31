@@ -9,23 +9,13 @@ namespace Mastery.Application.Features.Habits.EventHandlers;
 /// <summary>
 /// Creates MetricObservations when a habit is completed.
 /// This is the critical integration point between Habits and the Metrics system.
+/// Note: SaveChangesAsync is NOT called here - changes are committed by the parent transaction.
 /// </summary>
-public sealed class HabitCompletedEventHandler : INotificationHandler<HabitCompletedEvent>
+public sealed class HabitCompletedEventHandler(
+    IHabitRepository _habitRepository,
+    IMetricObservationRepository _observationRepository)
+    : INotificationHandler<HabitCompletedEvent>
 {
-    private readonly IHabitRepository _habitRepository;
-    private readonly IMetricObservationRepository _observationRepository;
-    private readonly IUnitOfWork _unitOfWork;
-
-    public HabitCompletedEventHandler(
-        IHabitRepository habitRepository,
-        IMetricObservationRepository observationRepository,
-        IUnitOfWork unitOfWork)
-    {
-        _habitRepository = habitRepository;
-        _observationRepository = observationRepository;
-        _unitOfWork = unitOfWork;
-    }
-
     public async Task Handle(HabitCompletedEvent notification, CancellationToken cancellationToken)
     {
         // Get the habit with its metric bindings
@@ -57,7 +47,5 @@ public sealed class HabitCompletedEventHandler : INotificationHandler<HabitCompl
         // Update streak (this could be moved to a separate handler or service)
         var streak = await _habitRepository.CalculateStreakAsync(notification.HabitId, cancellationToken);
         habit.UpdateStreak(streak);
-
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
     }
 }

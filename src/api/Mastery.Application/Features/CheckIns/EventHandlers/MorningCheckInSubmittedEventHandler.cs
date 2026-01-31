@@ -9,24 +9,14 @@ namespace Mastery.Application.Features.CheckIns.EventHandlers;
 /// <summary>
 /// Creates a MetricObservation for Energy when a morning check-in is submitted.
 /// This bridges the check-in system into the metrics system for trend analysis.
+/// Note: SaveChangesAsync is NOT called here - changes are committed by the parent transaction.
 /// </summary>
-public sealed class MorningCheckInSubmittedEventHandler : INotificationHandler<MorningCheckInSubmittedEvent>
+public sealed class MorningCheckInSubmittedEventHandler(
+    IMetricDefinitionRepository _metricDefinitionRepository,
+    IMetricObservationRepository _observationRepository)
+    : INotificationHandler<MorningCheckInSubmittedEvent>
 {
     private const string EnergyMetricName = "Energy Level";
-
-    private readonly IMetricDefinitionRepository _metricDefinitionRepository;
-    private readonly IMetricObservationRepository _observationRepository;
-    private readonly IUnitOfWork _unitOfWork;
-
-    public MorningCheckInSubmittedEventHandler(
-        IMetricDefinitionRepository metricDefinitionRepository,
-        IMetricObservationRepository observationRepository,
-        IUnitOfWork unitOfWork)
-    {
-        _metricDefinitionRepository = metricDefinitionRepository;
-        _observationRepository = observationRepository;
-        _unitOfWork = unitOfWork;
-    }
 
     public async Task Handle(MorningCheckInSubmittedEvent notification, CancellationToken cancellationToken)
     {
@@ -49,6 +39,5 @@ public sealed class MorningCheckInSubmittedEventHandler : INotificationHandler<M
             note: $"Morning energy: {notification.EnergyLevel}/5");
 
         await _observationRepository.AddAsync(observation, cancellationToken);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
     }
 }

@@ -60,7 +60,6 @@ public sealed class Experiment : OwnedEntity, IAggregateRoot
     /// <summary>
     /// Actual end date (set on completion or abandonment).
     /// </summary>
-    [EmbeddingIgnore]
     public DateOnly? EndDateActual { get; private set; }
 
     /// <summary>
@@ -78,7 +77,6 @@ public sealed class Experiment : OwnedEntity, IAggregateRoot
     /// <summary>
     /// The measured result of the experiment (set on completion).
     /// </summary>
-    [EmbeddingIgnore]
     public ExperimentResult? Result { get; private set; }
 
     private Experiment() { } // EF Core

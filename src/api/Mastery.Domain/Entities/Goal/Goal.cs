@@ -78,7 +78,6 @@ public sealed class Goal : OwnedEntity, IAggregateRoot
     /// <summary>
     /// When the goal was completed (if applicable).
     /// </summary>
-    [EmbeddingIgnore]
     public DateTime? CompletedAt { get; private set; }
 
     private Goal() { } // EF Core

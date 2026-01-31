@@ -78,7 +78,6 @@ public sealed class Project : OwnedEntity, IAggregateRoot
     /// <summary>
     /// When the project was completed.
     /// </summary>
-    [EmbeddingIgnore]
     public DateTime? CompletedAtUtc { get; private set; }
 
     #endregion
