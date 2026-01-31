@@ -1,7 +1,7 @@
 namespace Mastery.Infrastructure.Messaging;
 
 /// <summary>
-/// Configuration options for Azure Service Bus messaging via CAP.
+/// Configuration options for Azure Service Bus messaging.
 /// Uses queues (Basic tier) instead of topics for cost efficiency.
 /// </summary>
 public sealed class ServiceBusOptions
@@ -42,14 +42,4 @@ public sealed class ServiceBusOptions
     /// Interval in seconds between failed message retries.
     /// </summary>
     public int FailedRetryIntervalSeconds { get; set; } = 60;
-
-    /// <summary>
-    /// Consumer group name for this application instance.
-    /// </summary>
-    public string ConsumerGroup { get; set; } = "mastery-api";
-
-    /// <summary>
-    /// Whether to enable the CAP dashboard for message monitoring.
-    /// </summary>
-    public bool EnableDashboard { get; set; } = true;
 }

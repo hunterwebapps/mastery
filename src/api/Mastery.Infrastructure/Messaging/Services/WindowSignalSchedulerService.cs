@@ -9,21 +9,23 @@ namespace Mastery.Infrastructure.Messaging.Services;
 /// <summary>
 /// Background service that emits "MorningWindowStart" and "EveningWindowStart" signals
 /// at the appropriate times for each user based on their timezone and preferences.
-/// Runs every 5 minutes and schedules signals for users whose windows start in the next 5-minute bucket.
+/// Uses fixed wall-clock scheduling: wakes at each 5-minute boundary (:00, :05, :10, etc.)
+/// and processes the exact bucket for that interval. This ensures no gaps or overlaps
+/// regardless of processing time.
 /// </summary>
 public sealed class WindowSignalSchedulerService(
     IServiceScopeFactory _scopeFactory,
-    ILogger<WindowSignalSchedulerService> _logger)
+    ILogger<WindowSignalSchedulerService> _logger,
+    TimeProvider _timeProvider)
     : BackgroundService
 {
-    private readonly TimeSpan _checkInterval = TimeSpan.FromMinutes(5);
-    private readonly TimeSpan _lookAheadWindow = TimeSpan.FromMinutes(5);
+    private readonly int _bucketMinutes = 5;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation(
-            "Window Signal Scheduler started, checking every {Interval} minutes",
-            _checkInterval.TotalMinutes);
+            "Window Signal Scheduler started with {BucketMinutes}-minute fixed buckets",
+            _bucketMinutes);
 
         // Initial delay to let the application start up
         await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
@@ -32,7 +34,23 @@ public sealed class WindowSignalSchedulerService(
         {
             try
             {
-                await ScheduleWindowSignalsAsync(stoppingToken);
+                var now = _timeProvider.GetUtcNow().UtcDateTime;
+                var nextBucket = GetNextBucketStart(now);
+                var delayUntilNextBucket = nextBucket - now;
+
+                if (delayUntilNextBucket > TimeSpan.Zero)
+                {
+                    _logger.LogDebug(
+                        "Waiting until next bucket at {NextBucket:HH:mm:ss} UTC ({Delay:N1}s)",
+                        nextBucket, delayUntilNextBucket.TotalSeconds);
+
+                    await Task.Delay(delayUntilNextBucket, stoppingToken);
+                }
+
+                var bucketStart = GetCurrentBucketStart(_timeProvider.GetUtcNow().UtcDateTime);
+                var bucketEnd = bucketStart.AddMinutes(_bucketMinutes);
+
+                await ScheduleWindowSignalsAsync(bucketStart, bucketEnd, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -41,30 +59,50 @@ public sealed class WindowSignalSchedulerService(
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error scheduling window signals");
+                // Brief delay before retry to avoid tight loop on persistent errors
+                await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
             }
-
-            await Task.Delay(_checkInterval, stoppingToken);
         }
 
         _logger.LogInformation("Window Signal Scheduler stopped");
     }
 
-    private async Task ScheduleWindowSignalsAsync(CancellationToken ct)
+    /// <summary>
+    /// Gets the start of the current bucket (rounded down to nearest bucket boundary).
+    /// </summary>
+    private DateTime GetCurrentBucketStart(DateTime utcNow)
     {
+        var totalMinutes = (int)utcNow.TimeOfDay.TotalMinutes;
+        var bucketMinutes = (totalMinutes / _bucketMinutes) * _bucketMinutes;
+        return utcNow.Date.AddMinutes(bucketMinutes);
+    }
+
+    /// <summary>
+    /// Gets the start of the next bucket boundary.
+    /// </summary>
+    private DateTime GetNextBucketStart(DateTime utcNow)
+    {
+        var currentBucket = GetCurrentBucketStart(utcNow);
+        return currentBucket.AddMinutes(_bucketMinutes);
+    }
+
+    private async Task ScheduleWindowSignalsAsync(DateTime bucketStart, DateTime bucketEnd, CancellationToken ct)
+    {
+        _logger.LogDebug(
+            "Processing bucket {BucketStart:HH:mm} - {BucketEnd:HH:mm} UTC",
+            bucketStart, bucketEnd);
+
         using var scope = _scopeFactory.CreateScope();
         var scheduleResolver = scope.ServiceProvider.GetRequiredService<IUserScheduleResolver>();
         var signalEntryRepository = scope.ServiceProvider.GetRequiredService<ISignalEntryRepository>();
         var routingService = scope.ServiceProvider.GetRequiredService<SignalRoutingService>();
 
-        var now = DateTime.UtcNow;
-        var windowEnd = now.Add(_lookAheadWindow);
-
-        // Schedule both morning and evening windows
+        // Schedule both morning and evening windows for this exact bucket
         await ScheduleWindowTypeAsync(
             ProcessingWindowType.MorningWindow,
             "MorningWindowStart",
-            now,
-            windowEnd,
+            bucketStart,
+            bucketEnd,
             scheduleResolver,
             signalEntryRepository,
             routingService,
@@ -73,8 +111,8 @@ public sealed class WindowSignalSchedulerService(
         await ScheduleWindowTypeAsync(
             ProcessingWindowType.EveningWindow,
             "EveningWindowStart",
-            now,
-            windowEnd,
+            bucketStart,
+            bucketEnd,
             scheduleResolver,
             signalEntryRepository,
             routingService,
@@ -91,7 +129,7 @@ public sealed class WindowSignalSchedulerService(
         SignalRoutingService routingService,
         CancellationToken ct)
     {
-        // Get all users whose window starts in the next 5-minute bucket
+        // Get all users whose window starts in this exact bucket
         var usersInWindow = await scheduleResolver.GetUsersInWindowRangeAsync(
             windowType,
             utcStart,
@@ -113,7 +151,7 @@ public sealed class WindowSignalSchedulerService(
         {
             try
             {
-                // Check for duplicates (prevent scheduling same signal on restarts)
+                // Safety check for duplicates (handles restarts/crashes mid-bucket)
                 var windowDate = DateOnly.FromDateTime(user.WindowStartUtc);
                 var alreadyExists = await signalEntryRepository.ExistsForWindowAsync(
                     user.UserId,

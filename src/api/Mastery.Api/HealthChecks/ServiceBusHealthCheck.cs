@@ -28,10 +28,9 @@ public sealed class ServiceBusHealthCheck : IHealthCheck
         // For a more thorough health check, you could:
         // 1. Create a ServiceBusClient and verify connection
         // 2. Send a test message to a health check queue
-        // 3. Query CAP's internal tables for failed message counts
+        // 3. Query the outbox table for failed message counts
         //
         // For now, we report healthy if configuration is present.
-        // CAP handles actual connectivity and retries internally.
 
         var data = new Dictionary<string, object>
         {
@@ -41,8 +40,7 @@ public sealed class ServiceBusHealthCheck : IHealthCheck
             ["UrgentQueue"] = _options.UrgentQueueName,
             ["WindowQueue"] = _options.WindowQueueName,
             ["BatchQueue"] = _options.BatchQueueName,
-            ["MaxRetryCount"] = _options.MaxRetryCount,
-            ["DashboardEnabled"] = _options.EnableDashboard
+            ["MaxRetryCount"] = _options.MaxRetryCount
         };
 
         return Task.FromResult(HealthCheckResult.Healthy(

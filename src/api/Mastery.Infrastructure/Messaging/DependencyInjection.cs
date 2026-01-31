@@ -1,6 +1,7 @@
-using System.Text.Json;
-using DotNetCore.CAP;
+using Azure.Messaging.ServiceBus;
 using Mastery.Application.Common.Interfaces;
+using Mastery.Infrastructure.Messaging.Consumers;
+using Mastery.Infrastructure.Messaging.Events;
 using Mastery.Infrastructure.Messaging.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -8,12 +9,12 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Mastery.Infrastructure.Messaging;
 
 /// <summary>
-/// Dependency injection extension for CAP + Azure Service Bus messaging.
+/// Dependency injection extension for Azure Service Bus messaging with transactional outbox.
 /// </summary>
 public static class DependencyInjection
 {
     /// <summary>
-    /// Adds CAP messaging services with Azure Service Bus transport.
+    /// Adds Azure Service Bus messaging services with transactional outbox pattern.
     /// </summary>
     public static IServiceCollection AddMessaging(
         this IServiceCollection services,
@@ -27,8 +28,11 @@ public static class DependencyInjection
             .GetSection(ServiceBusOptions.SectionName)
             .Get<ServiceBusOptions>() ?? new ServiceBusOptions();
 
-        // Register the message bus abstraction
-        services.AddScoped<IMessageBus, CapMessageBus>();
+        // Register Azure Service Bus client
+        services.AddSingleton(_ => new ServiceBusClient(options.ConnectionString));
+
+        // Register the message bus abstraction (writes to outbox table)
+        services.AddScoped<IMessageBus, DirectServiceBusMessageBus>();
 
         // Register signal routing service
         services.AddScoped<SignalRoutingService>();
@@ -43,38 +47,14 @@ public static class DependencyInjection
         services.AddSingleton<WindowSignalSchedulerService>();
         services.AddHostedService(sp => sp.GetRequiredService<WindowSignalSchedulerService>());
 
-        // Get connection string for CAP storage
-        var sqlConnectionString = configuration.GetConnectionString("MasteryDb")
-            ?? throw new InvalidOperationException("MasteryDb connection string is required for CAP");
+        // Register queue processor (receives messages from Azure Service Bus)
+        services.AddHostedService<ServiceBusQueueProcessor>();
 
-        services.AddCap(capOptions =>
-        {
-            // Use SQL Server for CAP's outbox pattern
-            capOptions.UseSqlServer(sqlOptions =>
-            {
-                sqlOptions.ConnectionString = sqlConnectionString;
-                sqlOptions.Schema = "cap";
-            });
-
-            // Use Azure Service Bus as transport (Basic tier - queues only)
-            capOptions.UseAzureServiceBus(sbOptions =>
-            {
-                sbOptions.ConnectionString = options.ConnectionString;
-                // Basic tier uses queues, not topics - no TopicPath needed
-                sbOptions.EnableSessions = false;
-            });
-
-            // Retry configuration
-            capOptions.FailedRetryCount = options.MaxRetryCount;
-            capOptions.FailedRetryInterval = options.FailedRetryIntervalSeconds;
-
-            // Consumer group for subscription naming
-            capOptions.ConsumerThreadCount = 4;
-            capOptions.DefaultGroupName = options.ConsumerGroup;
-
-            // Use JSON serialization
-            capOptions.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-        });
+        // Register message handlers
+        services.AddScoped<IMessageHandler<EntityChangedBatchEvent>, EmbeddingConsumer>();
+        services.AddScoped<IMessageHandler<SignalRoutedBatchEvent>, UrgentSignalConsumer>();
+        services.AddScoped<IMessageHandler<SignalRoutedBatchEvent>, WindowSignalConsumer>();
+        services.AddScoped<IMessageHandler<SignalRoutedBatchEvent>, BatchSignalConsumer>();
 
         return services;
     }

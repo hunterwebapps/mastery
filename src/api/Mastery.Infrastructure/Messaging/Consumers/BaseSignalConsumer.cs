@@ -15,6 +15,7 @@ namespace Mastery.Infrastructure.Messaging.Consumers;
 /// Subclasses specify the queue subscription and window type determination.
 /// </summary>
 public abstract class BaseSignalConsumer<TConsumer>(
+    string queueName,
     IUserStateAssembler stateAssembler,
     ITieredAssessmentEngine tieredEngine,
     ISignalEntryRepository signalEntryRepository,
@@ -22,8 +23,10 @@ public abstract class BaseSignalConsumer<TConsumer>(
     IRecommendationRepository recommendationRepo,
     IUnitOfWork unitOfWork,
     IDateTimeProvider dateTimeProvider,
-    ILogger<TConsumer> logger)
+    ILogger<TConsumer> logger) : IMessageHandler<SignalRoutedBatchEvent>
 {
+    public string QueueName { get; } = queueName;
+
     protected readonly IUserStateAssembler StateAssembler = stateAssembler;
     protected readonly ITieredAssessmentEngine TieredEngine = tieredEngine;
     protected readonly ISignalEntryRepository SignalEntryRepository = signalEntryRepository;
@@ -53,7 +56,10 @@ public abstract class BaseSignalConsumer<TConsumer>(
     /// </summary>
     protected abstract string GetSignalTypeDescription(SignalRoutedBatchEvent batch);
 
-    protected async Task ProcessBatchAsync(SignalRoutedBatchEvent batch, CancellationToken cancellationToken)
+    /// <summary>
+    /// Handles the received message from Azure Service Bus.
+    /// </summary>
+    public async Task HandleAsync(SignalRoutedBatchEvent batch, CancellationToken cancellationToken)
     {
         using var activity = ActivityContextHelper.StartLinkedActivity(
             $"Process{GetSignalTypeDescription(batch)}Batch",
@@ -158,7 +164,7 @@ public abstract class BaseSignalConsumer<TConsumer>(
                 Logger.LogError(saveEx, "Failed to save processing history for user {UserId}", batch.UserId);
             }
 
-            throw; // CAP will retry
+            throw; // Service Bus will retry via abandon
         }
     }
 

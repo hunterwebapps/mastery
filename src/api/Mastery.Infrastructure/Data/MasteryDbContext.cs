@@ -72,14 +72,14 @@ public class MasteryDbContext(
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
-        // 1. Dispatch domain events BEFORE commit (handlers run within the same transaction)
+        // 1. Collect Service Bus snapshots from all entities with domain events
+        var entityChangeSnapshots = CollectServiceBusSnapshots();
+
+        // 2. Dispatch domain events BEFORE commit (handlers run within the same transaction)
         // This allows cascading events and ensures all changes are committed together
         await _domainEventDispatcher.DispatchEventsAsync(
             () => ChangeTracker.Entries<BaseEntity>().Select(e => e.Entity),
             cancellationToken);
-
-        // 2. Collect Service Bus snapshots from all entities with domain events
-        var entityChangeSnapshots = CollectServiceBusSnapshots();
 
         // 3. Apply audit fields
         ApplyAuditFields();
@@ -97,17 +97,16 @@ public class MasteryDbContext(
     {
         var snapshots = new List<EntityChangeSnapshot>();
 
-        foreach (var entry in ChangeTracker.Entries<BaseEntity>())
+        foreach (var entry in ChangeTracker.Entries<OwnedEntity>())
         {
             if (!HasEmbeddingRelevantChanges(entry))
             {
                 continue;
             }
 
-            if (entry.Entity is OwnedEntity ownedEntity &&
-                (entry.State == EntityState.Added ||
+            if (entry.State == EntityState.Added ||
                  entry.State == EntityState.Modified ||
-                 entry.State == EntityState.Deleted))
+                 entry.State == EntityState.Deleted)
             {
                 snapshots.Add(new EntityChangeSnapshot(
                     EntityType: entry.Entity.GetType().Name,
@@ -119,7 +118,7 @@ public class MasteryDbContext(
                         EntityState.Deleted => "Deleted",
                         _ => "Unknown"
                     },
-                    UserId: ownedEntity.UserId,
+                    UserId: entry.Entity.UserId,
                     DomainEventTypes: entry.Entity.DomainEvents
                         .Select(e => e.GetType().Name)
                         .ToArray()
@@ -222,18 +221,24 @@ public class MasteryDbContext(
     {
         var entityType = entry.Entity.GetType();
 
-        var isClassIgnored = entityType.GetCustomAttribute<EmbeddingIgnoreAttribute>() is not null;
-        if (!isClassIgnored)
+        if (entityType.GetCustomAttribute<EmbeddingIgnoreAttribute>() is not null)
         {
-            foreach (var property in entry.Properties)
-            {
-                if (!property.IsModified)
-                    continue;
+            return false;
+        }
 
-                var propertyInfo = entityType.GetProperty(property.Metadata.Name);
-                if (propertyInfo?.GetCustomAttribute<EmbeddingIgnoreAttribute>() is null)
-                    return true;
-            }
+        if (entry.State == EntityState.Added)
+        {
+            return true;
+        }
+
+        foreach (var property in entry.Properties)
+        {
+            if (!property.IsModified)
+                continue;
+
+            var propertyInfo = entityType.GetProperty(property.Metadata.Name);
+            if (propertyInfo?.GetCustomAttribute<EmbeddingIgnoreAttribute>() is null)
+                return true;
         }
 
 

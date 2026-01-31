@@ -1,4 +1,3 @@
-using DotNetCore.CAP;
 using Mastery.Application.Common.Interfaces;
 using Mastery.Application.Common.Models;
 using Mastery.Domain.Enums;
@@ -6,15 +5,17 @@ using Mastery.Infrastructure.Messaging.Events;
 using Mastery.Infrastructure.Messaging.Services;
 using Mastery.Infrastructure.Telemetry;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Serilog.Context;
 
 namespace Mastery.Infrastructure.Messaging.Consumers;
 
 /// <summary>
-/// CAP consumer that handles EntityChangedBatchEvent messages from the embeddings-pending queue.
+/// Consumer that handles EntityChangedBatchEvent messages from the embeddings-pending queue.
 /// Generates embeddings in batch and routes signals to appropriate queues.
 /// </summary>
 public sealed class EmbeddingConsumer(
+    IOptions<ServiceBusOptions> _options,
     IEntityResolver _entityResolver,
     IEmbeddingTextStrategyFactory _strategyFactory,
     IEmbeddingService _embeddingService,
@@ -22,10 +23,11 @@ public sealed class EmbeddingConsumer(
     ISignalClassifier _signalClassifier,
     SignalRoutingService _signalRouter,
     ILogger<EmbeddingConsumer> _logger)
-    : ICapSubscribe
+    : IMessageHandler<EntityChangedBatchEvent>
 {
-    [CapSubscribe("embeddings-pending")]
-    public async Task HandleBatchAsync(EntityChangedBatchEvent batch, CancellationToken cancellationToken)
+    public string QueueName => _options.Value.EmbeddingsQueueName;
+
+    public async Task HandleAsync(EntityChangedBatchEvent batch, CancellationToken cancellationToken)
     {
         using var activity = ActivityContextHelper.StartLinkedActivity(
             "ProcessEmbeddingBatch",
@@ -137,7 +139,7 @@ public sealed class EmbeddingConsumer(
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing embedding batch of {Count} events", batch.Events.Count);
-            throw; // CAP will retry
+            throw; // Service Bus will retry via abandon
         }
     }
 

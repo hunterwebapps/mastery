@@ -175,13 +175,6 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-// CAP Dashboard for message monitoring
-app.MapGet("/cap", context =>
-{
-    context.Response.Redirect("/cap/dashboard");
-    return Task.CompletedTask;
-});
-
 app.UseSerilogRequestLogging();
 app.UseHttpsRedirection();
 app.UseCors("AllowSpa");
