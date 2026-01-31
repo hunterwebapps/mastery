@@ -35,7 +35,7 @@ public sealed record EntityChangedEvent
     /// The domain event type that triggered this change (e.g., "HabitCompletedEvent").
     /// Used for signal classification.
     /// </summary>
-    public string? DomainEventType { get; init; }
+    public string[] DomainEventTypes { get; init; } = Array.Empty<string>();
 
     /// <summary>
     /// When this event was created (UTC).

@@ -14,7 +14,7 @@ public sealed record EntityChangedBatchEvent
     /// <summary>
     /// The individual entity changes in this batch.
     /// </summary>
-    public required IReadOnlyList<EntityChangedEvent> Events { get; init; }
+    public List<EntityChangedEvent> Events { get; init; } = new();
 
     /// <summary>
     /// When this batch was created (UTC).

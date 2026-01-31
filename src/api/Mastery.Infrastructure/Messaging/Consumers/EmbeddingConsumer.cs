@@ -146,29 +146,30 @@ public sealed class EmbeddingConsumer(
 
         foreach (var evt in events)
         {
-            if (string.IsNullOrEmpty(evt.DomainEventType) || string.IsNullOrEmpty(evt.UserId))
+            if (evt.DomainEventTypes.Length == 0 || string.IsNullOrEmpty(evt.UserId))
             {
                 continue;
             }
 
-            var classification = _signalClassifier.ClassifyOutboxEntry(
-                evt.EntityType,
-                evt.EntityId,
-                evt.DomainEventType,
-                evt.UserId);
+            var classifications = evt.DomainEventTypes
+                .Select(domainEventType => _signalClassifier.ClassifyOutboxEntry(
+                    evt.EntityType,
+                    evt.EntityId,
+                    domainEventType,
+                    evt.UserId))
+                .Where(classification => classification != null)
+                .ToList();
 
-            if (classification == null)
+            foreach (var classification in classifications)
             {
-                continue;
+                var key = (classification!.Priority, evt.UserId);
+                if (!signalsByPriorityAndUser.TryGetValue(key, out var list))
+                {
+                    list = [];
+                    signalsByPriorityAndUser[key] = list;
+                }
+                list.Add(classification);
             }
-
-            var key = (classification.Priority, evt.UserId);
-            if (!signalsByPriorityAndUser.TryGetValue(key, out var list))
-            {
-                list = [];
-                signalsByPriorityAndUser[key] = list;
-            }
-            list.Add(classification);
         }
 
         // Route each batch
