@@ -7,7 +7,7 @@ using Mastery.Domain.Entities.Habit;
 using Mastery.Domain.Entities.Task;
 using Mastery.Domain.Enums;
 
-namespace Mastery.Infrastructure.Services;
+namespace Mastery.Application.Features.Recommendations.Services;
 
 /// <summary>
 /// Classifies domain events into signals with appropriate priority and processing windows.

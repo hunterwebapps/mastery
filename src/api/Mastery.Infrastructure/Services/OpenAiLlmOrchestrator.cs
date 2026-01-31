@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Mastery.Application.Common.Interfaces;
 using Mastery.Application.Common.Models;
+using Mastery.Application.Features.Recommendations.Services;
 using Mastery.Domain.Diagnostics.Snapshots;
 using Mastery.Domain.Enums;
 using Mastery.Infrastructure.Services.Prompts;

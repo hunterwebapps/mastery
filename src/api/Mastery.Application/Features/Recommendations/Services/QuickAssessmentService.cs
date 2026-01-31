@@ -7,7 +7,7 @@ using Mastery.Domain.Entities.Signal;
 using Mastery.Domain.Enums;
 using Microsoft.Extensions.Logging;
 
-namespace Mastery.Infrastructure.Services;
+namespace Mastery.Application.Features.Recommendations.Services;
 
 /// <summary>
 /// Tier 1 quick assessment service that uses state delta and vector search

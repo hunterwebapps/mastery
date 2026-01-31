@@ -9,7 +9,7 @@ using Mastery.Domain.Enums;
 using Mastery.Domain.ValueObjects;
 using Microsoft.Extensions.Logging;
 
-namespace Mastery.Infrastructure.Services;
+namespace Mastery.Application.Features.Recommendations.Services;
 
 /// <summary>
 /// Orchestrates the tiered assessment pipeline: Tier 0 → Tier 1 → Tier 2.

@@ -4,13 +4,13 @@ using Mastery.Domain.Diagnostics.Snapshots;
 using Mastery.Domain.Enums;
 using Microsoft.Extensions.Logging;
 
-namespace Mastery.Infrastructure.Services;
+namespace Mastery.Application.Features.Recommendations.Services;
 
 /// <summary>
 /// Validates recommendation candidates against user state to filter out
 /// candidates with hallucinated entity IDs.
 /// </summary>
-internal static class RecommendationCandidateValidator
+public static class RecommendationCandidateValidator
 {
     /// <summary>
     /// Filters out recommendation candidates that reference non-existent entity IDs.
