@@ -1,4 +1,5 @@
 using Mastery.Application.Common.Models;
+using Mastery.Domain.Diagnostics.Snapshots;
 using Mastery.Domain.Entities.Recommendation;
 using Mastery.Domain.Entities.Signal;
 

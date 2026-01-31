@@ -1,5 +1,6 @@
 using Mastery.Application.Common.Interfaces;
 using Mastery.Application.Common.Models;
+using Mastery.Domain.Diagnostics.Snapshots;
 using Mastery.Domain.Entities.Signal;
 using Mastery.Domain.Enums;
 using Mastery.Infrastructure.Data;

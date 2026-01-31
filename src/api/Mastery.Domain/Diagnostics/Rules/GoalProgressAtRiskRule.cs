@@ -1,4 +1,4 @@
-using Mastery.Application.Common.Models;
+using Mastery.Domain.Diagnostics.Snapshots;
 using Mastery.Domain.Entities.Signal;
 using Mastery.Domain.Enums;
 using GoalCreatedEvent = Mastery.Domain.Entities.Goal.GoalCreatedEvent;
@@ -6,7 +6,7 @@ using GoalScoreboardUpdatedEvent = Mastery.Domain.Entities.Goal.GoalScoreboardUp
 using GoalUpdatedEvent = Mastery.Domain.Entities.Goal.GoalUpdatedEvent;
 using MetricObservationRecordedEvent = Mastery.Domain.Entities.Metrics.MetricObservationRecordedEvent;
 
-namespace Mastery.Infrastructure.Services.Rules;
+namespace Mastery.Domain.Diagnostics.Rules;
 
 /// <summary>
 /// Detects goals where current progress rate is insufficient to meet the deadline.

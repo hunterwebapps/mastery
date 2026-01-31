@@ -1,7 +1,6 @@
 using System.Text;
-using System.Text.Json;
 using System.Text.Json.Serialization;
-using Mastery.Application.Common.Models;
+using Mastery.Domain.Diagnostics.Snapshots;
 using Mastery.Domain.Enums;
 
 namespace Mastery.Infrastructure.Services.Prompts;

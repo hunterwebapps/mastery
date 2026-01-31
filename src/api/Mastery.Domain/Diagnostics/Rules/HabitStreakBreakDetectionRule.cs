@@ -1,8 +1,8 @@
-using Mastery.Application.Common.Models;
+using Mastery.Domain.Diagnostics.Snapshots;
 using Mastery.Domain.Entities.Signal;
 using Mastery.Domain.Enums;
 
-namespace Mastery.Infrastructure.Services.Rules;
+namespace Mastery.Domain.Diagnostics.Rules;
 
 /// <summary>
 /// Detects habits with active streaks that are at risk of breaking today.

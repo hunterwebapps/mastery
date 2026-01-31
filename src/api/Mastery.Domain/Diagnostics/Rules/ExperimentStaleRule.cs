@@ -1,8 +1,8 @@
-using Mastery.Application.Common.Models;
+using Mastery.Domain.Diagnostics.Snapshots;
 using Mastery.Domain.Entities.Signal;
 using Mastery.Domain.Enums;
 
-namespace Mastery.Infrastructure.Services.Rules;
+namespace Mastery.Domain.Diagnostics.Rules;
 
 /// <summary>
 /// Detects experiments that have passed their end date without a conclusion.

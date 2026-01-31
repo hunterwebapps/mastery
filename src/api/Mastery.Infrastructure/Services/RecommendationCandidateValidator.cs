@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Mastery.Application.Common.Models;
+using Mastery.Domain.Diagnostics.Snapshots;
 using Mastery.Domain.Enums;
 using Microsoft.Extensions.Logging;
 

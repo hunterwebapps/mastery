@@ -1,5 +1,5 @@
 using Mastery.Application.Common.Interfaces;
-using Mastery.Application.Common.Models;
+using Mastery.Domain.Diagnostics.Snapshots;
 using Mastery.Domain.Enums;
 using Mastery.Domain.Interfaces;
 

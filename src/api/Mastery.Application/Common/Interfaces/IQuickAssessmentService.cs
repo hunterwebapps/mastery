@@ -1,4 +1,5 @@
 using Mastery.Application.Common.Models;
+using Mastery.Domain.Diagnostics.Snapshots;
 using Mastery.Domain.Entities.Signal;
 
 namespace Mastery.Application.Common.Interfaces;

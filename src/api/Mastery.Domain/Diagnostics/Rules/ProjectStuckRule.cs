@@ -1,4 +1,4 @@
-using Mastery.Application.Common.Models;
+using Mastery.Domain.Diagnostics.Snapshots;
 using Mastery.Domain.Entities.Signal;
 using Mastery.Domain.Enums;
 using ProjectCreatedEvent = Mastery.Domain.Entities.Project.ProjectCreatedEvent;
@@ -8,7 +8,7 @@ using TaskCreatedEvent = Mastery.Domain.Entities.Task.TaskCreatedEvent;
 using TaskStatusChangedEvent = Mastery.Domain.Entities.Task.TaskStatusChangedEvent;
 using TaskStatus = Mastery.Domain.Enums.TaskStatus;
 
-namespace Mastery.Infrastructure.Services.Rules;
+namespace Mastery.Domain.Diagnostics.Rules;
 
 /// <summary>
 /// Detects projects that have stalled with no task completions in N days.

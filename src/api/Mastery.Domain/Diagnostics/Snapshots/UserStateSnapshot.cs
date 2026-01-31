@@ -1,7 +1,7 @@
 using Mastery.Domain.Enums;
 using TaskStatus = Mastery.Domain.Enums.TaskStatus;
 
-namespace Mastery.Application.Common.Models;
+namespace Mastery.Domain.Diagnostics.Snapshots;
 
 /// <summary>
 /// Read-only snapshot of a user's current state, assembled from existing repositories.

@@ -1,5 +1,5 @@
 using System.Text;
-using Mastery.Application.Common.Models;
+using Mastery.Domain.Diagnostics.Snapshots;
 using Mastery.Domain.Enums;
 
 namespace Mastery.Infrastructure.Services.Prompts;

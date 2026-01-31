@@ -1,8 +1,7 @@
-using Mastery.Application.Common.Interfaces;
-using Mastery.Application.Common.Models;
+using Mastery.Domain.Diagnostics.Snapshots;
 using Mastery.Domain.Entities.Signal;
 
-namespace Mastery.Infrastructure.Services.Rules;
+namespace Mastery.Domain.Diagnostics;
 
 /// <summary>
 /// Base class for deterministic rules providing common functionality.

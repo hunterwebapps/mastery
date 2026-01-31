@@ -1,4 +1,4 @@
-using Mastery.Application.Common.Models;
+using Mastery.Domain.Diagnostics.Snapshots;
 using Mastery.Domain.Entities.Signal;
 using Mastery.Domain.Enums;
 using TaskCreatedEvent = Mastery.Domain.Entities.Task.TaskCreatedEvent;
@@ -6,7 +6,7 @@ using TaskRescheduledEvent = Mastery.Domain.Entities.Task.TaskRescheduledEvent;
 using TaskUpdatedEvent = Mastery.Domain.Entities.Task.TaskUpdatedEvent;
 using TaskStatus = Mastery.Domain.Enums.TaskStatus;
 
-namespace Mastery.Infrastructure.Services.Rules;
+namespace Mastery.Domain.Diagnostics.Rules;
 
 /// <summary>
 /// Detects tasks that appear to be recurring/routine but have gone stale.

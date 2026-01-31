@@ -1,13 +1,13 @@
-using Mastery.Application.Common.Models;
+using Mastery.Domain.Diagnostics.Snapshots;
 using Mastery.Domain.Entities.Signal;
 using Mastery.Domain.Enums;
 using TaskStatus = Mastery.Domain.Enums.TaskStatus;
 
-namespace Mastery.Infrastructure.Services.Rules;
+namespace Mastery.Domain.Diagnostics.Rules;
 
 /// <summary>
 /// Detects when planned work exceeds available capacity by more than 20%.
-/// Triggers when: sum(scheduled task minutes) > capacity × 1.2
+/// Triggers when: sum(scheduled task minutes) > capacity x 1.2
 /// </summary>
 public sealed class TaskCapacityOverloadRule : DeterministicRuleBase
 {

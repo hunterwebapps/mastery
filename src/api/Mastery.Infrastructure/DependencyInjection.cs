@@ -1,6 +1,7 @@
-using Azure.Identity;
 using Mastery.Application.Common.Interfaces;
 using Mastery.Application.Features.Recommendations.Services;
+using Mastery.Domain.Diagnostics;
+using Mastery.Domain.Diagnostics.Rules;
 using Mastery.Domain.Entities;
 using Mastery.Domain.Entities.CheckIn;
 using Mastery.Domain.Entities.Experiment;
@@ -18,7 +19,6 @@ using Mastery.Infrastructure.Identity.Services;
 using Mastery.Infrastructure.Messaging;
 using Mastery.Infrastructure.Repositories;
 using Mastery.Infrastructure.Services;
-using Mastery.Infrastructure.Services.Rules;
 using Mastery.Infrastructure.Telemetry;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Azure.Cosmos;

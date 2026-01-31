@@ -1,9 +1,9 @@
-using Mastery.Application.Common.Models;
+using Mastery.Domain.Diagnostics.Snapshots;
 using Mastery.Domain.Entities.Goal;
 using Mastery.Domain.Entities.Signal;
 using Mastery.Domain.Enums;
 
-namespace Mastery.Infrastructure.Services.Rules;
+namespace Mastery.Domain.Diagnostics.Rules;
 
 /// <summary>
 /// Detects active goals that are missing lead or lag metrics on their scoreboard.
