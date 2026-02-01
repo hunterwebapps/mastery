@@ -2,6 +2,8 @@ using System.Reflection;
 using FluentValidation;
 using Mastery.Application.Common.Behaviors;
 using Mastery.Application.Common.Interfaces;
+using Mastery.Application.Features.Learning.Services;
+using Mastery.Application.Features.Recommendations.Policies;
 using Mastery.Application.Features.Recommendations.Services;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,6 +28,15 @@ public static class DependencyInjection
         services.AddScoped<IRecommendationPipeline, RecommendationPipeline>();
         services.AddScoped<IUserStateAssembler, UserStateAssembler>();
         services.AddScoped<IRecommendationExecutor, RecommendationExecutor>();
+
+        // Learning services
+        services.AddScoped<IUserContextProvider, UserContextProvider>();
+
+        // Policy enforcement
+        services.AddScoped<IRecommendationPolicyEnforcer, RecommendationPolicyEnforcer>();
+        services.AddScoped<IPolicyRule, DuplicateRecommendationPolicyRule>();
+        services.AddScoped<IPolicyRule, SingleActiveExperimentPolicyRule>();
+        services.AddScoped<IPolicyRule, CapacityBudgetPolicyRule>();
 
         return services;
     }

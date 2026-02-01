@@ -1,4 +1,4 @@
-namespace Mastery.Application.Features.UserProfiles.Models;
+namespace Mastery.Application.Features.Seasons.Models;
 
 /// <summary>
 /// Season DTO.

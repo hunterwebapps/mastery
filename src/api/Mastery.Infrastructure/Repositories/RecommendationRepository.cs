@@ -118,4 +118,32 @@ public class RecommendationRepository : BaseRepository<Recommendation>, IRecomme
                           (r.Status == RecommendationStatus.Pending || r.Status == RecommendationStatus.Snoozed),
                       cancellationToken);
     }
+
+    public async Task<IReadOnlyList<Recommendation>> GetAcceptedForTargetAsync(
+        string userId,
+        RecommendationTargetKind targetKind,
+        Guid entityId,
+        DateTime? acceptedAfter = null,
+        CancellationToken cancellationToken = default)
+    {
+        var query = DbSet
+            .Where(r => r.UserId == userId &&
+                        r.Target.Kind == targetKind &&
+                        r.Target.EntityId == entityId &&
+                        (r.Status == RecommendationStatus.Accepted || r.Status == RecommendationStatus.Executed));
+
+        if (acceptedAfter.HasValue)
+            query = query.Where(r => r.RespondedAt >= acceptedAfter.Value);
+
+        return await query
+            .OrderByDescending(r => r.RespondedAt)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task AddAgentRunsAsync(
+        IEnumerable<AgentRun> agentRuns,
+        CancellationToken cancellationToken = default)
+    {
+        await Context.AgentRuns.AddRangeAsync(agentRuns, cancellationToken);
+    }
 }

@@ -700,6 +700,262 @@ namespace Mastery.Infrastructure.Migrations
                     b.ToTable("HabitVariants", (string)null);
                 });
 
+            modelBuilder.Entity("Mastery.Domain.Entities.Intervention.InterventionTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("DefaultActionKind")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("DefaultRecommendationType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("DefaultTargetKind")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("DisplayOrder")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("ParametersSchema")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("RationaleTemplate")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("TitleTemplate")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Category");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("IsActive");
+
+                    b.ToTable("InterventionTemplates", (string)null);
+                });
+
+            modelBuilder.Entity("Mastery.Domain.Entities.Learning.InterventionOutcome", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("CapacityUtilization")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<string>("ContextKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("DayOfWeek")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DismissReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("EnergyLevel")
+                        .HasColumnType("int");
+
+                    b.Property<string>("InterventionCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("ModifiedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("OriginalScore")
+                        .HasPrecision(10, 4)
+                        .HasColumnType("decimal(10,4)");
+
+                    b.Property<Guid>("RecommendationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RecommendationType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("RecordedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("ResponseTimeSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SeasonIntensity")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<bool>("WasAccepted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool?>("WasCompleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("WasDismissed")
+                        .HasColumnType("bit");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RecommendationId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("UserId", "ContextKey");
+
+                    b.HasIndex("UserId", "RecommendationType");
+
+                    b.ToTable("InterventionOutcomes", (string)null);
+                });
+
+            modelBuilder.Entity("Mastery.Domain.Entities.Learning.PlaybookEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("AcceptanceCount")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("AcceptanceRate")
+                        .HasPrecision(5, 4)
+                        .HasColumnType("decimal(5,4)");
+
+                    b.Property<int>("CompletionCount")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("CompletionRate")
+                        .HasPrecision(5, 4)
+                        .HasColumnType("decimal(5,4)");
+
+                    b.Property<string>("ContextKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("LastUpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("ObservationCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RecommendationType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<decimal>("SuccessWeight")
+                        .HasPrecision(5, 4)
+                        .HasColumnType("decimal(5,4)");
+
+                    b.Property<Guid?>("UserPlaybookId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserPlaybookId", "RecommendationType", "ContextKey")
+                        .IsUnique()
+                        .HasFilter("[UserPlaybookId] IS NOT NULL");
+
+                    b.ToTable("PlaybookEntries", (string)null);
+                });
+
+            modelBuilder.Entity("Mastery.Domain.Entities.Learning.UserPlaybook", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("LastUpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("ModifiedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("TotalOutcomes")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("UserPlaybooks", (string)null);
+                });
+
             modelBuilder.Entity("Mastery.Domain.Entities.Metrics.MetricDefinition", b =>
                 {
                     b.Property<Guid>("Id")
@@ -990,6 +1246,105 @@ namespace Mastery.Infrastructure.Migrations
                     b.HasIndex("UserId", "Status");
 
                     b.ToTable("Projects", (string)null);
+                });
+
+            modelBuilder.Entity("Mastery.Domain.Entities.Recommendation.AgentRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("CachedInputTokens")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ErrorType")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<decimal?>("InputCostUsd")
+                        .HasPrecision(10, 8)
+                        .HasColumnType("decimal(10,8)");
+
+                    b.Property<int>("InputTokens")
+                        .HasColumnType("int");
+
+                    b.Property<int>("LatencyMs")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<decimal?>("OutputCostUsd")
+                        .HasPrecision(10, 8)
+                        .HasColumnType("decimal(10,8)");
+
+                    b.Property<int>("OutputTokens")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Provider")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int?>("ReasoningTokens")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("RecommendationTraceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RequestId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("RetryCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<string>("Stage")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("SystemFingerprint")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<decimal?>("TotalCostUsd")
+                        .HasPrecision(10, 8)
+                        .HasColumnType("decimal(10,8)");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ErrorType")
+                        .HasFilter("[ErrorType] IS NOT NULL");
+
+                    b.HasIndex("RecommendationTraceId");
+
+                    b.HasIndex("Model", "StartedAt");
+
+                    b.HasIndex("UserId", "StartedAt")
+                        .HasDatabaseName("IX_AgentRuns_UserId_StartedAt")
+                        .HasFilter("[UserId] IS NOT NULL");
+
+                    b.HasIndex("Provider", "Model", "StartedAt")
+                        .HasDatabaseName("IX_AgentRuns_Provider_Model_StartedAt");
+
+                    b.ToTable("AgentRuns", (string)null);
                 });
 
             modelBuilder.Entity("Mastery.Domain.Entities.Recommendation.Recommendation", b =>
@@ -2028,6 +2383,14 @@ namespace Mastery.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Mastery.Domain.Entities.Learning.PlaybookEntry", b =>
+                {
+                    b.HasOne("Mastery.Domain.Entities.Learning.UserPlaybook", null)
+                        .WithMany("Entries")
+                        .HasForeignKey("UserPlaybookId")
+                        .OnDelete(DeleteBehavior.Cascade);
+                });
+
             modelBuilder.Entity("Mastery.Domain.Entities.Metrics.MetricObservation", b =>
                 {
                     b.HasOne("Mastery.Domain.Entities.Metrics.MetricDefinition", null)
@@ -2464,6 +2827,11 @@ namespace Mastery.Infrastructure.Migrations
                     b.Navigation("Occurrences");
 
                     b.Navigation("Variants");
+                });
+
+            modelBuilder.Entity("Mastery.Domain.Entities.Learning.UserPlaybook", b =>
+                {
+                    b.Navigation("Entries");
                 });
 
             modelBuilder.Entity("Mastery.Domain.Entities.Project.Project", b =>

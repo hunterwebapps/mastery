@@ -49,4 +49,22 @@ public interface IRecommendationRepository : IRepository<Recommendation>
         RecommendationTargetKind targetKind,
         Guid? targetEntityId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets accepted recommendations targeting a specific entity within a time window.
+    /// Used to find recommendations that should be marked as completed when the target entity is completed.
+    /// </summary>
+    Task<IReadOnlyList<Recommendation>> GetAcceptedForTargetAsync(
+        string userId,
+        RecommendationTargetKind targetKind,
+        Guid entityId,
+        DateTime? acceptedAfter = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Adds AgentRun records for LLM call tracking.
+    /// </summary>
+    Task AddAgentRunsAsync(
+        IEnumerable<AgentRun> agentRuns,
+        CancellationToken cancellationToken = default);
 }

@@ -7,8 +7,8 @@ namespace Mastery.Domain.Entities.CheckIn;
 /// Raised when a morning check-in is submitted.
 /// Triggers metric observation creation for energy and capacity signals.
 /// </summary>
-[SignalClassification(SignalPriority.WindowAligned, ProcessingWindowType.MorningWindow,
-    Rationale = "User active - ideal for morning recommendations")]
+[SignalClassification(SignalPriority.Urgent, ProcessingWindowType.MorningWindow,
+    Rationale = "User submitted check-in - immediate recommendations needed")]
 public sealed record MorningCheckInSubmittedEvent(
     Guid CheckInId,
     string UserId,
@@ -20,8 +20,8 @@ public sealed record MorningCheckInSubmittedEvent(
 /// Raised when an evening check-in is submitted.
 /// Triggers adherence projection updates and diagnostic signals.
 /// </summary>
-[SignalClassification(SignalPriority.WindowAligned, ProcessingWindowType.EveningWindow,
-    Rationale = "User reflecting - ideal for evening coaching")]
+[SignalClassification(SignalPriority.Urgent, ProcessingWindowType.EveningWindow,
+    Rationale = "User submitted check-in - immediate recommendations needed")]
 public sealed record EveningCheckInSubmittedEvent(
     Guid CheckInId,
     string UserId,
@@ -40,7 +40,7 @@ public sealed record CheckInUpdatedEvent(
 /// <summary>
 /// Raised when a user explicitly skips a check-in.
 /// </summary>
-[SignalClassification(SignalPriority.WindowAligned, ProcessingWindowType.BatchWindow,
+[SignalClassification(SignalPriority.Urgent, ProcessingWindowType.BatchWindow,
     Rationale = "May indicate disengagement")]
 public sealed record CheckInSkippedEvent(
     Guid CheckInId,

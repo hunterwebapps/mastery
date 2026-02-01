@@ -1,4 +1,5 @@
 using Mastery.Application.Common.Interfaces;
+using Mastery.Application.Features.Seasons.Models;
 using Mastery.Application.Features.UserProfiles.Models;
 using Mastery.Domain.Entities.UserProfile;
 using Mastery.Domain.Interfaces;

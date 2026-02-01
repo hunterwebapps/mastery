@@ -29,7 +29,7 @@ public sealed record EntityChangedEvent
     /// <summary>
     /// The user ID associated with the entity (for user-scoped processing).
     /// </summary>
-    public string? UserId { get; init; }
+    public required string UserId { get; init; }
 
     /// <summary>
     /// The domain event type that triggered this change (e.g., "HabitCompletedEvent").

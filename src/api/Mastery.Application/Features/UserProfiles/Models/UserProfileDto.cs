@@ -1,3 +1,5 @@
+using Mastery.Application.Features.Seasons.Models;
+
 namespace Mastery.Application.Features.UserProfiles.Models;
 
 /// <summary>

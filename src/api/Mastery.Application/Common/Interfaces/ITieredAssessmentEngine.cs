@@ -36,7 +36,9 @@ public sealed record TieredAssessmentOutcome(
     IReadOnlyList<Recommendation> GeneratedRecommendations,
     TieredAssessmentStatistics Statistics,
     DateTime StartedAt,
-    DateTime CompletedAt)
+    DateTime CompletedAt,
+    PolicyEnforcementResult PolicyEnforcementResult,
+    IReadOnlyList<AgentRun> AgentRuns)
 {
     /// <summary>
     /// The final tier that was used for recommendation generation.
@@ -63,4 +65,6 @@ public sealed record TieredAssessmentStatistics(
     decimal? Tier1CombinedScore,
     int Tier1RelevantContextItems,
     int Tier2LlmCallsMade,
-    long DurationMs);
+    long DurationMs,
+    int PolicyRejectionsCount,
+    int PolicyViolationsCount);

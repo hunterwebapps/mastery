@@ -1,3 +1,5 @@
+using Mastery.Application.Common.Models;
+
 namespace Mastery.Application.Features.Recommendations.Models;
 
 /// <summary>
@@ -40,15 +42,21 @@ public sealed record ExecutionResult
     public bool RequiresClientAction { get; init; }
 
     /// <summary>
+    /// LLM call metadata for cost tracking and debugging (if LLM was used).
+    /// </summary>
+    public LlmCallRecord? LlmCall { get; init; }
+
+    /// <summary>
     /// Creates a result for server-side executed actions.
     /// </summary>
-    public static ExecutionResult ForServerExecuted(Guid id, string kind) =>
+    public static ExecutionResult ForServerExecuted(Guid id, string kind, LlmCallRecord? llmCall = null) =>
         new()
         {
             Success = true,
             EntityId = id,
             EntityKind = kind,
-            RequiresClientAction = false
+            RequiresClientAction = false,
+            LlmCall = llmCall,
         };
 
     /// <summary>
@@ -82,11 +90,12 @@ public sealed record ExecutionResult
     /// <summary>
     /// Creates a failed result.
     /// </summary>
-    public static ExecutionResult Failed(string error) =>
+    public static ExecutionResult Failed(string error, LlmCallRecord? llmCall = null) =>
         new()
         {
             Success = false,
             ErrorMessage = error,
-            RequiresClientAction = false
+            RequiresClientAction = false,
+            LlmCall = llmCall,
         };
 }

@@ -154,6 +154,15 @@ public abstract class BaseSignalConsumer<TConsumer>(
 
             history.RecordRecommendations(recommendationIds.Count, recommendationIds);
 
+            // 4b. Persist AgentRuns for LLM cost tracking
+            if (outcome.AgentRuns?.Count > 0)
+            {
+                await RecommendationRepo.AddAgentRunsAsync(outcome.AgentRuns, cancellationToken);
+                Logger.LogDebug(
+                    "Persisted {Count} AgentRuns for user {UserId}",
+                    outcome.AgentRuns.Count, batch.UserId);
+            }
+
             // 5. Mark signals as processed and persist for audit
             var now = DateTimeProvider.UtcNow;
             foreach (var signal in signals)

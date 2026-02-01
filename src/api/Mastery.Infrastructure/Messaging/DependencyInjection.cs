@@ -42,10 +42,10 @@ public static class DependencyInjection
         services.AddSingleton<DlqMonitorService>();
         services.AddHostedService(sp => sp.GetRequiredService<DlqMonitorService>());
 
-        // Register window signal scheduler as singleton and hosted service
-        // Emits MorningWindowStart/EveningWindowStart signals at appropriate times per user
-        services.AddSingleton<WindowSignalSchedulerService>();
-        services.AddHostedService(sp => sp.GetRequiredService<WindowSignalSchedulerService>());
+        // Register weekly review scheduler as singleton and hosted service
+        // Emits WeeklyReviewStart signals based on user's preferred review day/time
+        services.AddSingleton<WeeklyReviewSchedulerService>();
+        services.AddHostedService(sp => sp.GetRequiredService<WeeklyReviewSchedulerService>());
 
         // Register queue processor (receives messages from Azure Service Bus)
         services.AddHostedService<ServiceBusQueueProcessor>();

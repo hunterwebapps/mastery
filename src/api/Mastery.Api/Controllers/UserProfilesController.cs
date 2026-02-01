@@ -1,6 +1,7 @@
 using Mastery.Api.Contracts.UserProfiles;
 using Mastery.Application.Features.Seasons.Commands.CreateSeason;
 using Mastery.Application.Features.Seasons.Commands.EndSeason;
+using Mastery.Application.Features.Seasons.Models;
 using Mastery.Application.Features.Seasons.Queries.GetUserSeasons;
 using Mastery.Application.Features.UserProfiles.Commands.CreateUserProfile;
 using Mastery.Application.Features.UserProfiles.Commands.UpdateConstraints;

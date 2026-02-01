@@ -1,5 +1,5 @@
 using Mastery.Application.Common.Interfaces;
-using Mastery.Application.Features.UserProfiles.Models;
+using Mastery.Application.Features.Seasons.Models;
 
 namespace Mastery.Application.Features.Seasons.Queries.GetUserSeasons;
 

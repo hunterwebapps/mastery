@@ -161,7 +161,7 @@ public sealed class QuickAssessmentService(
                 queryVector,
                 topK: MaxRelevantContextItems,
                 entityTypes: null, // Search all entity types
-                ct: ct);
+                ct);
 
             // Filter by similarity threshold and convert to context items
             var relevantItems = searchResults

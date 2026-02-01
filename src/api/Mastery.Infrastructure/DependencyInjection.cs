@@ -1,4 +1,5 @@
 using Mastery.Application.Common.Interfaces;
+using Mastery.Application.Features.Learning.Services;
 using Mastery.Application.Features.Recommendations.Services;
 using Mastery.Domain.Diagnostics;
 using Mastery.Domain.Diagnostics.Rules;
@@ -19,6 +20,8 @@ using Mastery.Infrastructure.Identity.Services;
 using Mastery.Infrastructure.Messaging;
 using Mastery.Infrastructure.Repositories;
 using Mastery.Infrastructure.Services;
+using Mastery.Infrastructure.Services.OpenAi;
+using Mastery.Infrastructure.Services.OpenAi.RAG;
 using Mastery.Infrastructure.Telemetry;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Azure.Cosmos;
@@ -65,6 +68,11 @@ public static class DependencyInjection
         services.AddScoped<IExperimentRepository, ExperimentRepository>();
         services.AddScoped<IRecommendationRepository, RecommendationRepository>();
         services.AddScoped<IRecommendationRunHistoryRepository, RecommendationRunHistoryRepository>();
+        services.AddScoped<IUserPlaybookRepository, UserPlaybookRepository>();
+        services.AddScoped<IInterventionOutcomeRepository, InterventionOutcomeRepository>();
+
+        // Learning engine for personalized intervention weighting
+        services.AddScoped<ILearningEngineService, LearningEngineService>();
 
         // Signal queue services
         services.AddScoped<ISignalEntryRepository, SignalEntryRepository>();
@@ -90,6 +98,7 @@ public static class DependencyInjection
         services.AddScoped<IDeterministicRule, MetricObservationOverdueRule>();
         services.AddScoped<IDeterministicRule, RecurringTaskStalenessRule>();
         services.AddScoped<IDeterministicRule, TaskOverdueRule>();
+        services.AddScoped<IDeterministicRule, NbaCandidatesRule>();
         services.AddScoped<IDeterministicRulesEngine, DeterministicRulesEngine>();
 
         // Tier 1 quick assessment services
@@ -111,6 +120,9 @@ public static class DependencyInjection
 
         // RAG context retriever (Scoped for per-request embedding cache)
         services.AddScoped<IRagContextRetriever, RagContextRetriever>();
+
+        // LLM metrics collector for cost tracking
+        services.AddScoped<ILlmMetricsCollector, LlmMetricsCollector>();
 
         // OpenAI recommendation orchestrator
         services.AddScoped<LlmResponseParser>();

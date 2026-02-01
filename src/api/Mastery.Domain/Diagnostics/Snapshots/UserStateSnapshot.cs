@@ -9,7 +9,7 @@ namespace Mastery.Domain.Diagnostics.Snapshots;
 /// </summary>
 public sealed record UserStateSnapshot(
     string UserId,
-    UserProfileSnapshot? Profile,
+    UserProfileSnapshot Profile,
     IReadOnlyList<GoalSnapshot> Goals,
     IReadOnlyList<HabitSnapshot> Habits,
     IReadOnlyList<TaskSnapshot> Tasks,

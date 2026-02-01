@@ -10,6 +10,8 @@ using Mastery.Domain.Entities.Project;
 using Mastery.Domain.Entities.Task;
 using Mastery.Domain.Entities.CheckIn;
 using Mastery.Domain.Entities.Experiment;
+using Mastery.Domain.Entities.Intervention;
+using Mastery.Domain.Entities.Learning;
 using Mastery.Domain.Entities.Recommendation;
 using Mastery.Domain.Entities.Signal;
 using Mastery.Domain.Entities.UserProfile;
@@ -57,9 +59,14 @@ public class MasteryDbContext(
     public DbSet<Recommendation> Recommendations => Set<Recommendation>();
     public DbSet<RecommendationTrace> RecommendationTraces => Set<RecommendationTrace>();
     public DbSet<RecommendationRunHistory> RecommendationRunHistory => Set<RecommendationRunHistory>();
+    public DbSet<AgentRun> AgentRuns => Set<AgentRun>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<SignalEntry> SignalEntries => Set<SignalEntry>();
     public DbSet<SignalProcessingHistory> SignalProcessingHistory => Set<SignalProcessingHistory>();
+    public DbSet<InterventionTemplate> InterventionTemplates => Set<InterventionTemplate>();
+    public DbSet<InterventionOutcome> InterventionOutcomes => Set<InterventionOutcome>();
+    public DbSet<UserPlaybook> UserPlaybooks => Set<UserPlaybook>();
+    public DbSet<PlaybookEntry> PlaybookEntries => Set<PlaybookEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

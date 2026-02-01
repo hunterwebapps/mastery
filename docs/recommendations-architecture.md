@@ -1,915 +1,377 @@
-# Recommendations Architecture
-
-This document describes the signal-driven, three-tier assessment pipeline that powers Mastery's recommendation engine. The system processes domain events through deterministic rules with optional LLM escalation, following the principle: **deterministic constraints first, LLM second**.
-
-## Table of Contents
-
-1. [System Overview](#system-overview)
-2. [Data Flow](#data-flow)
-3. [Domain Events & Signal Classification](#domain-events--signal-classification)
-4. [Outbox Pattern & Message Flow](#outbox-pattern--message-flow)
-5. [Signal Priority & Routing](#signal-priority--routing)
-6. [Tiered Assessment Pipeline](#tiered-assessment-pipeline)
-7. [Tier 0: Deterministic Rules](#tier-0-deterministic-rules)
-8. [Tier 1: Quick Assessment](#tier-1-quick-assessment)
-9. [Tier 2: LLM Pipeline](#tier-2-llm-pipeline)
-10. [Recommendation Entity](#recommendation-entity)
-11. [Audit & Observability](#audit--observability)
-12. [Key File Locations](#key-file-locations)
-
----
-
-## System Overview
-
-The recommendations architecture implements a closed-loop control system where:
-
-- **Domain events** from aggregate roots are classified into **signals**
-- Signals are routed to **priority-based queues** via Azure Service Bus
-- A **three-tier assessment pipeline** evaluates signals and generates recommendations
-- Full **audit trails** enable explainability and debugging
-
-### Design Principles
-
-1. **Deterministic First**: All feasibility, severity, and candidate actions computed via code
-2. **Explainability as First-Class**: Every recommendation includes a trace of inputs, rules triggered, and selection method
-3. **Cost-Efficient**: LLM calls only when deterministic rules escalate
-4. **Event-Sourced**: Everything the user does becomes a domain event; recommendations are projections
-
----
-
-## Data Flow
-
-```
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                              DOMAIN LAYER                                            │
-├─────────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                      │
-│   Aggregate Roots (Goal, Habit, Task, Project, CheckIn, Experiment, etc.)           │
-│         │                                                                            │
-│         ▼                                                                            │
-│   Domain Events (annotated with [SignalClassification] or [NoSignal])               │
-│                                                                                      │
-└─────────────────────────────────────────────────────────────────────────────────────┘
-                                        │
-                                        ▼
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                           PERSISTENCE LAYER                                          │
-├─────────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                      │
-│   MasteryDbContext.SaveChangesAsync()                                               │
-│         │                                                                            │
-│         ├──► Dispatch domain events via MediatR (for event handlers)                │
-│         │                                                                            │
-│         └──► Create OutboxEntry records (for embedding + signal processing)         │
-│                    │                                                                 │
-│                    ▼                                                                 │
-│              Publish EntityChangedBatchEvent to Service Bus                         │
-│                                                                                      │
-└─────────────────────────────────────────────────────────────────────────────────────┘
-                                        │
-                                        ▼
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                           EMBEDDING PIPELINE                                         │
-├─────────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                      │
-│   EmbeddingConsumer (CAP subscriber: "embeddings-pending")                          │
-│         │                                                                            │
-│         ├──► Resolve entities from database                                         │
-│         ├──► Generate embedding text via strategy pattern                           │
-│         ├──► Generate embeddings via IEmbeddingService                              │
-│         ├──► Store in vector store (IVectorStore)                                   │
-│         │                                                                            │
-│         └──► Classify signals via ISignalClassifier                                 │
-│                    │                                                                 │
-│                    ▼                                                                 │
-│              Route signals to priority-based queues                                 │
-│                                                                                      │
-└─────────────────────────────────────────────────────────────────────────────────────┘
-                                        │
-            ┌───────────────────────────┼───────────────────────────┐
-            │                           │                           │
-            ▼                           ▼                           ▼
-   signals-urgent              signals-window              signals-batch
-   (P0 - Immediate)        (P1 - Window-Aligned)        (P2/P3 - Standard/Low)
-            │                           │                           │
-            ▼                           ▼                           ▼
-   UrgentSignalConsumer      WindowSignalConsumer       BatchSignalConsumer
-            │                           │                           │
-            └───────────────────────────┼───────────────────────────┘
-                                        │
-                                        ▼
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                      TIERED ASSESSMENT PIPELINE                                      │
-├─────────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                      │
-│   TieredAssessmentEngine.AssessAsync()                                              │
-│         │                                                                            │
-│         ├──► TIER 0: Deterministic Rules (IDeterministicRulesEngine)                │
-│         │         │                                                                  │
-│         │         ├── Evaluate all 16 rules in parallel                             │
-│         │         ├── Generate direct recommendations                               │
-│         │         └── Determine escalation to Tier 1                                │
-│         │                                                                            │
-│         ├──► TIER 1: Quick Assessment (IQuickAssessmentService) [if escalated]      │
-│         │         │                                                                  │
-│         │         ├── Calculate state delta since last assessment                   │
-│         │         ├── Vector search for relevant context                            │
-│         │         ├── Compute combined score (relevance + delta + urgency)          │
-│         │         └── Determine escalation to Tier 2 (threshold: 0.5)               │
-│         │                                                                            │
-│         └──► TIER 2: LLM Pipeline (IRecommendationOrchestrator) [if escalated]      │
-│                   │                                                                  │
-│                   ├── Assemble full user state                                      │
-│                   ├── Run LLM recommendation orchestration                          │
-│                   └── Record baseline for future delta calculations                 │
-│                                                                                      │
-└─────────────────────────────────────────────────────────────────────────────────────┘
-                                        │
-                                        ▼
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                           RECOMMENDATION OUTPUT                                      │
-├─────────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                      │
-│   Recommendation entities persisted with:                                           │
-│         ├── Type, Context, Target, ActionKind                                       │
-│         ├── Title, Rationale, Score                                                 │
-│         ├── ActionPayload, ActionSummary                                            │
-│         └── RecommendationTrace (full audit trail)                                  │
-│                                                                                      │
-│   SignalEntry records marked as processed with AssessmentTier                       │
-│   SignalProcessingHistory recorded for observability                                │
-│                                                                                      │
-└─────────────────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Domain Events & Signal Classification
-
-Domain events are annotated with attributes that determine their signal classification:
-
-### Attributes
-
-| Attribute | Purpose |
-|-----------|---------|
-| `[SignalClassification(priority, windowType, rationale)]` | Classifies event for signal processing |
-| `[NoSignal(reason)]` | Marks event as not requiring signal processing |
-
-**File**: `src/api/Mastery.Domain/Common/SignalClassificationAttribute.cs`
-
-### Signal Priority Enum
-
-```csharp
-public enum SignalPriority
-{
-    Urgent = 0,         // Process within 5 minutes (P0)
-    WindowAligned = 1,  // Process at user's natural window (P1)
-    Standard = 2,       // Process within 4-6 hours in batch (P2)
-    Low = 3             // Process within 24 hours in background (P3)
-}
-```
-
-### Processing Window Type Enum
-
-```csharp
-public enum ProcessingWindowType
-{
-    Immediate,      // Process immediately (urgent signals)
-    MorningWindow,  // Typically 6-9 AM local time
-    EveningWindow,  // Typically 8-10 PM local time
-    WeeklyReview,   // Sunday evening
-    BatchWindow     // Next batch run (standard/low priority)
-}
-```
-
-### Complete Domain Events Reference
-
-#### CheckIn Events
-
-| Event | Priority | Window | Rationale |
-|-------|----------|--------|-----------|
-| `MorningCheckInSubmittedEvent` | WindowAligned | MorningWindow | User active - ideal for morning recommendations |
-| `EveningCheckInSubmittedEvent` | WindowAligned | EveningWindow | User reflecting - ideal for evening coaching |
-| `CheckInUpdatedEvent` | Low | BatchWindow | Metadata update - triggers re-indexing |
-| `CheckInSkippedEvent` | WindowAligned | BatchWindow | May indicate disengagement |
-
-#### Habit Events
-
-| Event | Priority | Window | Rationale |
-|-------|----------|--------|-----------|
-| `HabitCreatedEvent` | Low | BatchWindow | Setup event - triggers metadata indexing |
-| `HabitUpdatedEvent` | Low | BatchWindow | Metadata update - triggers re-indexing |
-| `HabitStatusChangedEvent` | Low | BatchWindow | Lifecycle change - may affect planning |
-| `HabitArchivedEvent` | Low | BatchWindow | Lifecycle change - removes from active planning |
-| `HabitCompletedEvent` | Standard | BatchWindow | Behavioral signal - affects adherence and recommendations |
-| `HabitUndoneEvent` | **NoSignal** | - | Internal correction - no signal needed |
-| `HabitSkippedEvent` | Standard | BatchWindow | Behavioral signal - may indicate friction |
-| `HabitMissedEvent` | Standard | BatchWindow | May trigger P0 via adherence detection |
-| `HabitOccurrenceRescheduledEvent` | Standard | BatchWindow | Rescheduling indicates friction |
-| `HabitStreakMilestoneEvent` | Standard | BatchWindow | Positive reinforcement opportunity |
-| `HabitModeSuggestedEvent` | **NoSignal** | - | Internal suggestion event |
-
-#### Task Events
-
-| Event | Priority | Window | Rationale |
-|-------|----------|--------|-----------|
-| `TaskCreatedEvent` | Low | BatchWindow | Setup event - triggers metadata indexing |
-| `TaskUpdatedEvent` | Low | BatchWindow | Metadata update - triggers re-indexing |
-| `TaskStatusChangedEvent` | **NoSignal** | - | Internal state transition |
-| `TaskScheduledEvent` | **NoSignal** | - | Internal scheduling event |
-| `TaskRescheduledEvent` | Standard | BatchWindow | Behavioral signal - may trigger P0 via reschedule pattern |
-| `TaskCompletedEvent` | Standard | BatchWindow | Behavioral signal - affects capacity and recommendations |
-| `TaskCompletionUndoneEvent` | **NoSignal** | - | Internal correction - no signal needed |
-| `TaskCancelledEvent` | **NoSignal** | - | Internal lifecycle event |
-| `TaskArchivedEvent` | Low | BatchWindow | Lifecycle change - removes from active planning |
-| `TaskDependencyAddedEvent` | **NoSignal** | - | Internal graph update |
-| `TaskDependencyRemovedEvent` | **NoSignal** | - | Internal graph update |
-
-#### Goal Events
-
-| Event | Priority | Window | Rationale |
-|-------|----------|--------|-----------|
-| `GoalCreatedEvent` | Low | BatchWindow | Setup event - triggers metadata indexing |
-| `GoalUpdatedEvent` | Low | BatchWindow | Metadata update - triggers re-indexing |
-| `GoalStatusChangedEvent` | Standard | BatchWindow | Behavioral signal - affects goal progress tracking |
-| `GoalCompletedEvent` | Standard | BatchWindow | Major achievement - triggers celebration and review |
-| `GoalScoreboardUpdatedEvent` | **NoSignal** | - | Internal scoreboard update |
-
-#### Project Events
-
-| Event | Priority | Window | Rationale |
-|-------|----------|--------|-----------|
-| `ProjectCreatedEvent` | Low | BatchWindow | Setup event - triggers metadata indexing |
-| `ProjectUpdatedEvent` | Low | BatchWindow | Metadata update - triggers re-indexing |
-| `ProjectStatusChangedEvent` | Standard | BatchWindow | Behavioral signal - affects project progress tracking |
-| `ProjectNextActionSetEvent` | **NoSignal** | - | Internal planning update |
-| `ProjectCompletedEvent` | Standard | BatchWindow | Major achievement - triggers celebration and review |
-| `MilestoneAddedEvent` | **NoSignal** | - | Internal planning update |
-| `MilestoneCompletedEvent` | Standard | BatchWindow | Progress milestone - triggers celebration |
-
-#### Experiment Events
-
-| Event | Priority | Window | Rationale |
-|-------|----------|--------|-----------|
-| `ExperimentCreatedEvent` | Low | BatchWindow | Setup event - triggers metadata indexing |
-| `ExperimentUpdatedEvent` | Low | BatchWindow | Metadata update - triggers re-indexing |
-| `ExperimentStartedEvent` | Standard | BatchWindow | Behavioral signal - experiment tracking begins |
-| `ExperimentPausedEvent` | **NoSignal** | - | Internal state transition |
-| `ExperimentResumedEvent` | **NoSignal** | - | Internal state transition |
-| `ExperimentCompletedEvent` | Standard | BatchWindow | Experiment outcome - learning engine input |
-| `ExperimentAbandonedEvent` | Standard | BatchWindow | Experiment abandoned - may indicate friction |
-| `ExperimentArchivedEvent` | **NoSignal** | - | Internal lifecycle event |
-| `ExperimentNoteAddedEvent` | Low | BatchWindow | Note content may be useful for analysis |
-
-#### Metric Events
-
-| Event | Priority | Window | Rationale |
-|-------|----------|--------|-----------|
-| `MetricDefinitionCreatedEvent` | Low | BatchWindow | Setup event - triggers metadata indexing |
-| `MetricDefinitionUpdatedEvent` | Low | BatchWindow | Metadata update - triggers re-indexing |
-| `MetricDefinitionArchivedEvent` | Low | BatchWindow | Lifecycle change - removes from active tracking |
-| `MetricObservationRecordedEvent` | Standard | BatchWindow | Behavioral signal - affects goal progress |
-| `MetricObservationCorrectedEvent` | **NoSignal** | - | Internal correction - no signal needed |
-
-#### UserProfile Events
-
-| Event | Priority | Window | Rationale |
-|-------|----------|--------|-----------|
-| `UserProfileCreatedEvent` | Low | BatchWindow | Setup event - triggers metadata indexing |
-| `UserProfileUpdatedEvent` | Low | BatchWindow | Profile update - may affect capacity and preferences |
-| `PreferencesUpdatedEvent` | **NoSignal** | - | Internal preference update |
-| `ConstraintsUpdatedEvent` | **NoSignal** | - | Internal constraint update |
-
-#### Season Events
-
-| Event | Priority | Window | Rationale |
-|-------|----------|--------|-----------|
-| `SeasonCreatedEvent` | Low | BatchWindow | Setup event - triggers metadata indexing |
-| `SeasonActivatedEvent` | Standard | BatchWindow | Season change affects planning |
-| `SeasonEndedEvent` | Low | BatchWindow | Lifecycle change - may trigger review |
-| `SeasonClearedEvent` | **NoSignal** | - | Internal state transition |
-
-#### Recommendation Events
-
-| Event | Classification | Rationale |
-|-------|----------------|-----------|
-| `RecommendationsGeneratedEvent` | **NoSignal** | System output event - no signal needed |
-| `RecommendationAcceptedEvent` | **NoSignal** | Feedback event - processed separately |
-| `RecommendationDismissedEvent` | **NoSignal** | Feedback event - processed separately |
-| `RecommendationSnoozedEvent` | **NoSignal** | Feedback event - processed separately |
-| `DiagnosticSignalDetectedEvent` | **NoSignal** | Internal diagnostic event |
-
-### Summary Statistics
-
-- **Total Domain Events**: ~60
-- **With SignalClassification**: ~39 events
-- **With NoSignal**: ~21 events
-- **Priority Distribution**: Urgent (0), WindowAligned (4), Standard (18), Low (17)
-
----
-
-## Outbox Pattern & Message Flow
-
-### OutboxEntry Entity
-
-Entity changes are captured in the `OutboxEntry` table during `SaveChangesAsync`:
-
-```csharp
-public sealed class OutboxEntry
-{
-    public long Id { get; private set; }
-    public string EntityType { get; private set; }       // "Goal", "Habit", etc.
-    public Guid EntityId { get; private set; }
-    public string Operation { get; private set; }        // "Created", "Updated", "Deleted"
-    public string? UserId { get; private set; }
-    public string DomainEventType { get; private set; }  // "HabitCompletedEvent", etc.
-    public DateTime CreatedAt { get; private set; }
-    public OutboxEntryStatus Status { get; private set; }
-    // Lease-based processing fields...
-}
-```
-
-**File**: `src/api/Mastery.Infrastructure/Outbox/OutboxEntry.cs`
-
-### Message Flow
-
-1. **SaveChangesAsync** captures domain events from tracked entities
-2. One `OutboxEntry` created per domain event (not per entity change)
-3. `EntityChangedBatchEvent` published to `embeddings-pending` queue
-4. Both mechanisms ensure reliability:
-   - Service Bus for fast processing when available
-   - Outbox for SQL-based retry when Service Bus fails
-
-### EntityChangedBatchEvent
-
-```csharp
-public sealed record EntityChangedBatchEvent
-{
-    public Guid BatchId { get; init; }
-    public required IReadOnlyList<EntityChangedEvent> Events { get; init; }
-    public DateTime CreatedAt { get; init; }
-    public string? CorrelationId { get; init; }
-}
-```
-
-**File**: `src/api/Mastery.Infrastructure/Messaging/Events/EntityChangedBatchEvent.cs`
-
----
-
-## Signal Priority & Routing
-
-### Service Bus Queues
-
-| Queue Name | Priority | Processing |
-|------------|----------|------------|
-| `embeddings-pending` | - | Entity embedding generation |
-| `signals-urgent` | P0 (Urgent) | Immediate processing (<5 min) |
-| `signals-window` | P1 (WindowAligned) | Scheduled for user's natural window |
-| `signals-batch` | P2/P3 (Standard/Low) | Background batch processing |
-
-**Configuration**: `src/api/Mastery.Infrastructure/Messaging/ServiceBusOptions.cs`
-
-### Signal Routing Service
-
-The `SignalRoutingService` routes classified signals to appropriate queues:
-
-```csharp
-private string GetQueueForPriority(SignalPriority priority) => priority switch
-{
-    SignalPriority.Urgent => _options.Value.UrgentQueueName,
-    SignalPriority.WindowAligned => _options.Value.WindowQueueName,
-    SignalPriority.Standard or SignalPriority.Low => _options.Value.BatchQueueName,
-    _ => _options.Value.BatchQueueName
-};
-```
-
-For **window-aligned signals**, the service calculates the user's next window start time and schedules the message for delayed delivery.
-
-**File**: `src/api/Mastery.Infrastructure/Messaging/Services/SignalRoutingService.cs`
-
-### Signal Consumers
-
-Each queue has a dedicated CAP consumer:
-
-| Consumer | Queue | Processing Window Type |
-|----------|-------|------------------------|
-| `UrgentSignalConsumer` | signals-urgent | Immediate |
-| `WindowSignalConsumer` | signals-window | MorningWindow/EveningWindow (from signal) |
-| `BatchSignalConsumer` | signals-batch | BatchWindow |
-
-All consumers inherit from `BaseSignalConsumer` which implements the common processing pipeline.
-
-**Files**:
-- `src/api/Mastery.Infrastructure/Messaging/Consumers/UrgentSignalConsumer.cs`
-- `src/api/Mastery.Infrastructure/Messaging/Consumers/WindowSignalConsumer.cs`
-- `src/api/Mastery.Infrastructure/Messaging/Consumers/BatchSignalConsumer.cs`
-
-### Escalation to Urgent
-
-The `SignalClassifier` can escalate signals to urgent based on patterns:
-
-```csharp
-public bool ShouldEscalateToUrgent(IReadOnlyList<SignalClassification> pendingSignals, object? state)
-{
-    var missedHabits = pendingSignals.Count(s => s.EventType == nameof(HabitMissedEvent));
-    var rescheduledTasks = pendingSignals.Count(s => s.EventType == nameof(TaskRescheduledEvent));
-    var skippedCheckIns = pendingSignals.Count(s => s.EventType == nameof(CheckInSkippedEvent));
-
-    if (missedHabits >= 3) return true;
-    if (rescheduledTasks >= 3) return true;
-    if (skippedCheckIns >= 2 && missedHabits >= 1) return true;
-
-    return false;
-}
-```
-
-**File**: `src/api/Mastery.Infrastructure/Services/SignalClassifier.cs`
-
----
-
-## Tiered Assessment Pipeline
-
-### Overview
-
-The `TieredAssessmentEngine` orchestrates a three-tier pipeline:
-
-```
-Signals → Tier 0 (Always) → [Escalate?] → Tier 1 → [Escalate?] → Tier 2
-              │                              │                      │
-              ▼                              ▼                      ▼
-    Direct Recommendations          State Delta Score        LLM Recommendations
-```
-
-### Assessment Tiers
-
-```csharp
-public enum AssessmentTier
-{
-    Tier0_Deterministic,      // Rules only, no LLM
-    Tier1_QuickAssessment,    // Lightweight embeddings/delta
-    Tier2_FullPipeline,       // Full 3-stage LLM pipeline
-    Skipped
-}
-```
-
-### TieredAssessmentOutcome
-
-```csharp
-public sealed record TieredAssessmentOutcome(
-    string UserId,
-    IReadOnlyList<SignalEntry> ProcessedSignals,
-    RuleEvaluationResult Tier0Result,
-    QuickAssessmentResult? Tier1Result,
-    bool Tier2Executed,
-    IReadOnlyList<Recommendation> GeneratedRecommendations,
-    TieredAssessmentStatistics Statistics,
-    DateTime StartedAt,
-    DateTime CompletedAt);
-```
-
-**File**: `src/api/Mastery.Infrastructure/Services/TieredAssessmentEngine.cs`
-
----
-
-## Tier 0: Deterministic Rules
-
-Tier 0 evaluates all enabled deterministic rules in parallel and generates direct recommendations without LLM involvement.
-
-### Interface
-
-```csharp
-public interface IDeterministicRulesEngine
-{
-    Task<RuleEvaluationResult> EvaluateAsync(
-        UserStateSnapshot state,
-        IReadOnlyList<SignalEntry> signals,
-        CancellationToken cancellationToken = default);
-}
-```
-
-### Rule Severity
-
-```csharp
-public enum RuleSeverity
-{
-    Low,
-    Medium,
-    High,
-    Critical
-}
-```
-
-### Rule Result
-
-```csharp
-public sealed record RuleResult(
-    string RuleId,
-    string RuleName,
-    bool Triggered,
-    RuleSeverity Severity,
-    IReadOnlyDictionary<string, object> Evidence,
-    DirectRecommendationCandidate? DirectRecommendation = null,
-    bool RequiresEscalation = false);
-```
-
-### Implemented Rules (16 Total)
-
-#### Check-In Rules
-
-| Rule | Description | Severity Factors |
-|------|-------------|------------------|
-| `CheckInMissingRule` | Detects missing morning/evening check-ins | Streak length (30+ = Critical) |
-| `CheckInNoTop1SelectedRule` | Ensures user selects a priority | - |
-
-#### Task Rules
-
-| Rule | Description | Severity Factors |
-|------|-------------|------------------|
-| `TaskCapacityOverloadRule` | Planned work > capacity × 1.2 | Overload %: Critical (50%+), High (35-50%), Medium (20-35%) |
-| `TaskOverdueRule` | Detects overdue tasks | Reschedule count, overdue duration |
-| `TaskEnergyMismatchRule` | Task energy > current energy state | - |
-| `RecurringTaskStalenessRule` | Recurring tasks not updated recently | - |
-
-#### Habit Rules
-
-| Rule | Description | Severity Factors |
-|------|-------------|------------------|
-| `HabitAdherenceThresholdRule` | 7-day adherence < 50% | Adherence + streak + mode + goal linkage |
-| `HabitStreakBreakDetectionRule` | Early warning before streak breaks | - |
-
-#### Goal Rules
-
-| Rule | Description | Severity Factors |
-|------|-------------|------------------|
-| `GoalProgressAtRiskRule` | Goal at risk of missing deadline | Rate ratio: Critical (<25%), High (<50%), Medium (<75%) |
-| `DeadlineProximityRule` | Imminent deadlines (24-48h window) | Days remaining, progress % |
-| `GoalScoreboardIncompleteRule` | Goal metrics not tracked | - |
-
-#### Project Rules
-
-| Rule | Description | Severity Factors |
-|------|-------------|------------------|
-| `ProjectStuckRule` | Active project with no progress | - |
-
-#### Experiment Rules
-
-| Rule | Description | Severity Factors |
-|------|-------------|------------------|
-| `ExperimentStaleRule` | Experiment not updated recently | - |
-
-#### Metric Rules
-
-| Rule | Description | Severity Factors |
-|------|-------------|------------------|
-| `MetricObservationOverdueRule` | Metrics missing recent observations | - |
-
-### Escalation to Tier 1
-
-Tier 0 recommends escalation when:
-
-- 2+ high/critical severity rules triggered
-- Rules explicitly request escalation (`RequiresEscalation = true`)
-- Conflicting recommendations detected
-- 4+ rules triggered (complex situation)
-- Any urgent signal present
-
-**Files**:
-- `src/api/Mastery.Application/Common/Interfaces/IDeterministicRulesEngine.cs`
-- `src/api/Mastery.Infrastructure/Services/Rules/DeterministicRulesEngine.cs`
-- `src/api/Mastery.Infrastructure/Services/Rules/DeterministicRuleBase.cs`
-- `src/api/Mastery.Infrastructure/Services/Rules/*.cs` (individual rules)
-
----
-
-## Tier 1: Quick Assessment
-
-Tier 1 determines whether to escalate to the full LLM pipeline by computing a combined score from state delta, vector search relevance, and signal urgency.
-
-### Interface
-
-```csharp
-public interface IQuickAssessmentService
-{
-    Task<QuickAssessmentResult> AssessAsync(
-        UserStateSnapshot state,
-        IReadOnlyList<SignalEntry> signals,
-        RuleEvaluationResult tier0Result,
-        CancellationToken cancellationToken = default);
-}
-```
-
-### Score Calculation
-
-```
-Combined Score = (Relevance × 0.3) + (Delta × 0.4) + (Urgency × 0.3)
-```
-
-| Component | Weight | Source |
-|-----------|--------|--------|
-| Relevance | 0.3 | Vector search similarity scores |
-| Delta | 0.4 | State changes since last assessment |
-| Urgency | 0.3 | Signal priorities + Tier 0 severity |
-
-### Escalation Threshold: 0.5
-
-Tier 1 recommends escalation when:
-
-- Combined score ≥ 0.5
-- Tier 0 already requested escalation
-- Critical severity detected
-- High urgency (>0.7) + moderate delta (>0.3)
-- ≥ 3 missed items detected
-
-### State Delta Calculator
-
-Tracks changes since last assessment with weighted scoring:
-
-| Change Type | Weight |
-|-------------|--------|
-| New Entity | 0.15 |
-| Modified Entity | 0.10 |
-| Completed Item | 0.05 |
-| Missed Item | 0.20 |
-| New Signal | 0.08 |
-
-**Files**:
-- `src/api/Mastery.Application/Common/Interfaces/IQuickAssessmentService.cs`
-- `src/api/Mastery.Infrastructure/Services/QuickAssessmentService.cs`
-- `src/api/Mastery.Application/Common/Interfaces/IStateDeltaCalculator.cs`
-- `src/api/Mastery.Infrastructure/Services/StateDeltaCalculator.cs`
-
----
-
-## Tier 2: LLM Pipeline
-
-Tier 2 runs the full LLM recommendation orchestration when escalated from Tier 1.
-
-### Interface
-
-```csharp
-public interface IRecommendationOrchestrator
-{
-    Task<RecommendationOrchestrationResult> OrchestrateAsync(
-        UserStateSnapshot state,
-        RecommendationContext context,
-        CancellationToken cancellationToken = default);
-}
-```
-
-### Recommendation Context
-
-```csharp
-public enum RecommendationContext
-{
-    MorningCheckIn,
-    EveningCheckIn,
-    WeeklyReview,
-    DriftAlert,
-    ProactiveCheck
-}
-```
-
-Context is determined from signal types:
-
-- Check-in signals → `MorningCheckIn` or `EveningCheckIn`
-- Weekly window signals → `WeeklyReview`
-- Urgent signals → `DriftAlert`
-- Other → `ProactiveCheck`
-
-### User State Assembly
-
-The `UserStateAssembler` creates a comprehensive snapshot:
-
-```csharp
-public sealed record UserStateSnapshot(
-    string UserId,
-    UserProfileSnapshot? Profile,
-    IReadOnlyList<GoalSnapshot> Goals,
-    IReadOnlyList<HabitSnapshot> Habits,
-    IReadOnlyList<TaskSnapshot> Tasks,
-    IReadOnlyList<ProjectSnapshot> Projects,
-    IReadOnlyList<ExperimentSnapshot> Experiments,
-    IReadOnlyList<CheckInSnapshot> RecentCheckIns,
-    IReadOnlyList<MetricDefinitionSnapshot> MetricDefinitions,
-    int CheckInStreak,
-    DateOnly Today);
-```
-
-### Baseline Recording
-
-After Tier 2 execution, a baseline is recorded for future delta calculations:
-
-```csharp
-await _deltaCalculator.RecordBaselineAsync(state.UserId, state, ct);
-```
-
-**Files**:
-- `src/api/Mastery.Application/Common/Interfaces/IRecommendationOrchestrator.cs`
-- `src/api/Mastery.Application/Common/Interfaces/IUserStateAssembler.cs`
-- `src/api/Mastery.Application/Features/Recommendations/Services/UserStateAssembler.cs`
-- `src/api/Mastery.Application/Common/Models/UserStateSnapshot.cs`
-
----
-
-## Recommendation Entity
-
-### Recommendation
-
-```csharp
-public sealed class Recommendation : OwnedEntity, IAggregateRoot
-{
-    public RecommendationType Type { get; }
-    public RecommendationStatus Status { get; }
-    public RecommendationContext Context { get; }
-    public RecommendationTarget Target { get; }
-    public RecommendationActionKind ActionKind { get; }
-    public string Title { get; }
-    public string Rationale { get; }
-    public string? ActionPayload { get; }
-    public string? ActionSummary { get; }
-    public decimal Score { get; }
-    public DateTime? ExpiresAt { get; }
-    public IReadOnlyList<Guid> SignalIds { get; }
-    public RecommendationTrace? Trace { get; }
-}
-```
-
-### Recommendation Types
-
-```csharp
-public enum RecommendationType
-{
-    // Action-based
-    NextBestAction,
-    Top1Suggestion,
-    HabitModeSuggestion,
-    PlanRealismAdjustment,
-    TaskBreakdownSuggestion,
-    ScheduleAdjustmentSuggestion,
-    ProjectStuckFix,
-    ExperimentRecommendation,
-    GoalScoreboardSuggestion,
-    HabitFromLeadMetricSuggestion,
-    CheckInConsistencyNudge,
-    MetricObservationReminder,
-
-    // Task suggestions
-    TaskEditSuggestion,
-    TaskArchiveSuggestion,
-    TaskTriageSuggestion,
-
-    // Habit suggestions
-    HabitEditSuggestion,
-    HabitArchiveSuggestion,
-
-    // Goal suggestions
-    GoalEditSuggestion,
-    GoalArchiveSuggestion,
-
-    // Project suggestions
-    ProjectSuggestion,
-    ProjectEditSuggestion,
-    ProjectArchiveSuggestion,
-
-    // Other
-    MetricEditSuggestion,
-    ExperimentEditSuggestion,
-    ExperimentArchiveSuggestion
-}
-```
-
-### Recommendation Status Lifecycle
-
-```
-Pending → Accepted → Executed
-       → Dismissed
-       → Snoozed → Accepted/Dismissed
-       → Expired
-```
-
-**File**: `src/api/Mastery.Domain/Entities/Recommendation/Recommendation.cs`
-
----
-
-## Audit & Observability
-
-### RecommendationTrace
-
-Every recommendation includes a full audit trail:
-
-```csharp
-public sealed class RecommendationTrace : AuditableEntity
-{
-    public Guid RecommendationId { get; }
-    public string StateSnapshotJson { get; }      // Full user state at generation time
-    public string SignalsSummaryJson { get; }     // Signals that triggered generation
-    public string CandidateListJson { get; }      // All candidates considered
-    public string? PromptVersion { get; }         // LLM prompt version (if Tier 2)
-    public string? ModelVersion { get; }          // LLM model version (if Tier 2)
-    public string? RawLlmResponse { get; }        // Raw LLM output (if Tier 2)
-    public string SelectionMethod { get; }        // "Tier0_Direct", "Tier2_LLM", etc.
-}
-```
-
-**File**: `src/api/Mastery.Domain/Entities/Recommendation/RecommendationTrace.cs`
-
-### SignalEntry
-
-Signals are persisted for audit with processing metadata:
-
-```csharp
-public sealed class SignalEntry
-{
-    public string UserId { get; }
-    public string EventType { get; }
-    public SignalPriority Priority { get; }
-    public ProcessingWindowType WindowType { get; }
-    public SignalStatus Status { get; }           // Pending, Processing, Processed, Skipped, Failed, Expired
-    public AssessmentTier? ProcessingTier { get; }
-    public string? SkipReason { get; }
-    public DateTime CreatedAt { get; }
-    public DateTime? ProcessedAt { get; }
-}
-```
-
-**File**: `src/api/Mastery.Domain/Entities/Signal/SignalEntry.cs`
-
-### SignalProcessingHistory
-
-Each processing cycle is recorded:
-
-```csharp
-public sealed class SignalProcessingHistory
-{
-    public string UserId { get; }
-    public ProcessingWindowType WindowType { get; }
-    public int SignalsReceived { get; }
-    public int SignalsProcessed { get; }
-    public int SignalsSkipped { get; }
-    public int Tier0RulesTriggered { get; }
-    public decimal? Tier1CombinedScore { get; }
-    public string? Tier1DeltaSummaryJson { get; }
-    public bool Tier2Executed { get; }
-    public int RecommendationsGenerated { get; }
-    public string? RecommendationIdsJson { get; }
-    public string? ErrorMessage { get; }
-    public DateTime StartedAt { get; }
-    public DateTime? CompletedAt { get; }
-}
-```
-
-**File**: `src/api/Mastery.Domain/Entities/Signal/SignalProcessingHistory.cs`
-
----
-
-## Key File Locations
-
-### Domain Layer
-
-| Component | Path |
-|-----------|------|
-| Signal Classification Attributes | `src/api/Mastery.Domain/Common/SignalClassificationAttribute.cs` |
-| Signal Enums | `src/api/Mastery.Domain/Enums/SignalPriority.cs`, `ProcessingWindowType.cs`, `AssessmentTier.cs` |
-| Domain Events | `src/api/Mastery.Domain/Entities/*/Events.cs` |
-| SignalEntry | `src/api/Mastery.Domain/Entities/Signal/SignalEntry.cs` |
-| SignalProcessingHistory | `src/api/Mastery.Domain/Entities/Signal/SignalProcessingHistory.cs` |
-| Recommendation | `src/api/Mastery.Domain/Entities/Recommendation/Recommendation.cs` |
-| RecommendationTrace | `src/api/Mastery.Domain/Entities/Recommendation/RecommendationTrace.cs` |
-| RecommendationType | `src/api/Mastery.Domain/Enums/RecommendationType.cs` |
-
-### Application Layer
-
-| Component | Path |
-|-----------|------|
-| IDeterministicRulesEngine | `src/api/Mastery.Application/Common/Interfaces/IDeterministicRulesEngine.cs` |
-| ITieredAssessmentEngine | `src/api/Mastery.Application/Common/Interfaces/ITieredAssessmentEngine.cs` |
-| IQuickAssessmentService | `src/api/Mastery.Application/Common/Interfaces/IQuickAssessmentService.cs` |
-| IRecommendationOrchestrator | `src/api/Mastery.Application/Common/Interfaces/IRecommendationOrchestrator.cs` |
-| IStateDeltaCalculator | `src/api/Mastery.Application/Common/Interfaces/IStateDeltaCalculator.cs` |
-| IUserStateAssembler | `src/api/Mastery.Application/Common/Interfaces/IUserStateAssembler.cs` |
-| UserStateSnapshot | `src/api/Mastery.Application/Common/Models/UserStateSnapshot.cs` |
-| RuleResult | `src/api/Mastery.Application/Common/Models/RuleResult.cs` |
-| QuickAssessmentResult | `src/api/Mastery.Application/Common/Models/QuickAssessmentResult.cs` |
-| UserStateAssembler | `src/api/Mastery.Application/Features/Recommendations/Services/UserStateAssembler.cs` |
-
-### Infrastructure Layer
-
-| Component | Path |
-|-----------|------|
-| MasteryDbContext | `src/api/Mastery.Infrastructure/Data/MasteryDbContext.cs` |
-| OutboxEntry | `src/api/Mastery.Infrastructure/Outbox/OutboxEntry.cs` |
-| ServiceBusOptions | `src/api/Mastery.Infrastructure/Messaging/ServiceBusOptions.cs` |
-| SignalClassifier | `src/api/Mastery.Infrastructure/Services/SignalClassifier.cs` |
-| SignalRoutingService | `src/api/Mastery.Infrastructure/Messaging/Services/SignalRoutingService.cs` |
-| EmbeddingConsumer | `src/api/Mastery.Infrastructure/Messaging/Consumers/EmbeddingConsumer.cs` |
-| BaseSignalConsumer | `src/api/Mastery.Infrastructure/Messaging/Consumers/BaseSignalConsumer.cs` |
-| UrgentSignalConsumer | `src/api/Mastery.Infrastructure/Messaging/Consumers/UrgentSignalConsumer.cs` |
-| WindowSignalConsumer | `src/api/Mastery.Infrastructure/Messaging/Consumers/WindowSignalConsumer.cs` |
-| BatchSignalConsumer | `src/api/Mastery.Infrastructure/Messaging/Consumers/BatchSignalConsumer.cs` |
-| TieredAssessmentEngine | `src/api/Mastery.Infrastructure/Services/TieredAssessmentEngine.cs` |
-| DeterministicRulesEngine | `src/api/Mastery.Infrastructure/Services/Rules/DeterministicRulesEngine.cs` |
-| DeterministicRuleBase | `src/api/Mastery.Infrastructure/Services/Rules/DeterministicRuleBase.cs` |
-| Individual Rules | `src/api/Mastery.Infrastructure/Services/Rules/*.cs` |
-| QuickAssessmentService | `src/api/Mastery.Infrastructure/Services/QuickAssessmentService.cs` |
-| StateDeltaCalculator | `src/api/Mastery.Infrastructure/Services/StateDeltaCalculator.cs` |
-| Message Events | `src/api/Mastery.Infrastructure/Messaging/Events/*.cs` |
+What your system is optimizing for
+
+Across the docs, Mastery is already structured as a closed-loop control system:
+	•	Setpoints + guardrails live in UserProfile (values, roles, season, preferences, constraints).  ￼
+	•	Objectives + scoreboards live in Goals & Metrics (lag/lead/constraint metrics + observations).  ￼
+	•	Actuators are Habits (recurring lead behaviors with mode variants) and Projects/Tasks (one-time actions with energy/context/time).
+	•	Sensors are Check-Ins (AM intent + PM reality capture; energy/stress/blockers; Top-1 completion as “error signal”).  ￼
+	•	Adaptive mechanism is Experiments (hypothesis → baseline/run windows → guardrails → outcome classification), with the single-active constraint to avoid confounds.  ￼
+	•	The system design doc explicitly pushes “deterministic constraints first, LLM second,” plus event-ledger + recommendation traces.  ￼
+
+So the app’s goal is not “generate advice.” It’s: continuously translate goals into feasible daily execution under capacity constraints, then learn what interventions actually work for this user.
+
+That’s exactly where an agentic system fits—as the controller that runs multiple feedback loops (daily, weekly, experimental), while keeping your “<2 minutes/day input” constraint intact.
+
+⸻
+
+What “agentic” should mean in Mastery
+
+In this domain, “agentic” is not “the LLM autonomously edits the user’s life.” The reliable version is:
+	1.	Compute feasibility + candidates deterministically (plans, NBA candidates, overload, etc.).
+	2.	Use an LLM to select, explain, and adapt language (bounded to candidates + structured intervention library).
+	3.	Persist an auditable trace (what inputs/rules/candidates led to what recommendation).
+	4.	Measure acceptance → completion → outcome and update a per-user playbook.
+
+This aligns directly with the system-design principle you already wrote down.  ￼
+
+⸻
+
+Agentic assistance surfaces along the “path to Mastery”
+
+Here are the highest leverage places the agent can help, mapped to your existing primitives (so it stays implementable):
+
+1) Goal formation → scoreboard quality (high leverage, low frequency)
+	•	Convert “I want X” into 1 lag + 2 lead + 1 constraint scoreboard defaults.
+	•	Detect missing baselines, wrong aggregation/window, unrealistic targets.
+	•	Suggest metric definitions and default cadences.
+
+(Uses Goals & Metrics entities and target/window/aggregation rules.)  ￼
+
+2) Goal → actuator mapping (habits/tasks/projects)
+	•	For each lead metric, propose habits (recurring) and projects/tasks (one-time) that plausibly move it.
+	•	Auto-link tasks/habits to goals and metric bindings where appropriate, so downstream “goal impact scoring” is real, not vibes.
+
+(Uses Habits metric bindings + Task metric bindings + GoalId links.)
+
+3) Daily plan generation under capacity constraints (daily)
+	•	After AM check-in, compute a feasible plan given:
+	•	energy + mode (Full/Maintenance/Minimum),
+	•	constraints (max planned minutes, blocked windows),
+	•	due dates, energy costs, context tags, dependencies,
+	•	season/role priorities.
+
+Then pick Top 1 + 2–3 support actions, and present alternatives.
+
+(Check-ins provide energy/mode/top1; constraints in profile; tasks/habits provide energy/time/context; the doc calls this “Next Best Action” and “plan realism.”)
+
+4) Friction diagnosis + interventions (daily/weekly)
+	•	Cluster friction signals:
+	•	habit miss reasons, task reschedule reasons, evening blocker categories, Top-1 misses.
+	•	Convert those into one targeted intervention (not a laundry list).
+
+(Miss reasons / blockers are explicitly designed as diagnostic signals.)
+
+5) Weekly review → one experiment/week (weekly)
+	•	Summarize the week (wins/misses, lead vs lag drift, constraint violations).
+	•	Choose one experiment to run next week (single-active constraint respected).
+	•	Define measurement plan: primary metric + guardrails + compliance threshold.
+
+(Your experiment model already has the right scaffolding; the agent’s job is selection + packaging.)
+
+6) Learning engine → personalization (ongoing)
+	•	Track “what worked when”:
+	•	intervention type, context features (energy, overload, day-of-week, season intensity),
+	•	acceptance and completion outcomes,
+	•	experiment classifications.
+
+Then weight future recommendations using a simple bandit model.
+
+(This is explicitly on your roadmap as “Learning Engine / playbook.”)  ￼
+
+⸻
+
+Proposed architecture: “Mastery Intelligence” as a controller pipeline
+
+Key idea
+
+You don’t need a swarm of chatty agents. You need one orchestrator that runs a deterministic + LLM controller pipeline, plus a few specialized sub-components.
+
+Logical components
+
+Client (mobile/web)
+   │
+   ▼
+BFF / API (TodayView, WeeklyReviewView, CoachChat)
+   │
+   ├── Domain modules (existing):
+   │     UserProfile, Goals/Metrics, Habits, Tasks/Projects, CheckIns, Experiments
+   │
+   └── Mastery Intelligence (new)
+         ├── State Builder (projection-backed)
+         ├── Planning Engine (deterministic)
+         ├── Diagnostic Engine (rules-first)
+         ├── Intervention Library (curated)
+         ├── LLM Orchestrator (bounded choice + explanation)
+         ├── Recommendation Store + Trace Store
+         └── Learning Engine (bandit/playbook)
+
+The controller pipeline (the core “agent run”)
+
+This is the concrete, implementable pipeline I’d build around your existing domain events:
+
+Step 0 — Trigger
+
+Triggered by one of:
+	•	MorningCheckInSubmittedEvent (daily plan)
+	•	EveningCheckInSubmittedEvent (drift update + next day precompute)
+	•	weekly scheduled job (weekly review)
+	•	explicit “Ask Coach” request
+
+(Check-ins already emit these domain events.)  ￼
+
+Step 1 — Build a structured UserStateSnapshot
+
+This should be strictly structured, assembled from projections for speed:
+	•	UserProfile (values/roles/season + constraints + preferences)  ￼
+	•	Active goals + scoreboard metrics + recent aggregated values/trends  ￼
+	•	Today habits due + streak/adherence + today occurrence status  ￼
+	•	Today tasks (scheduled/due/overdue) + energy cost + context + dependencies + reschedule friction  ￼
+	•	Latest check-ins (energy/mode/top1/blockers) + streak  ￼
+	•	Active experiment (if any) + measurement plan status  ￼
+
+Step 2 — Deterministic computation (“code decides what’s feasible”)
+
+Produce:
+	•	Capacity budget for today (minutes + energy) from constraints + energy/mode.
+	•	Feasibility gating: filter out tasks/habits that can’t fit (time, context, blocked windows, dependencies).
+	•	Candidate actions with scores:
+	•	Next Best Action candidates (tasks)
+	•	Due habits with mode recommendation (Full/Maintenance/Minimum)
+	•	“Triage” candidates (Inbox→Ready tasks, “scope too big” breakdown)
+	•	“Unstick project” candidates (create next action)
+	•	Diagnostic flags: overcommitment, repeated friction patterns, check-in consistency drop, Top1 follow-through drop.
+
+This is where you operationalize your “deterministic constraints first” rule.  ￼
+
+Step 3 — LLM selection + explanation (bounded)
+
+Give the LLM:
+	•	the snapshot summary (not the full DB),
+	•	diagnostic flags,
+	•	top N candidates (with structured fields + scores),
+	•	the user’s coaching preferences (style/verbosity/nudge level).
+
+Ask it to output only:
+	•	selected recommendation(s) from the candidate set,
+	•	a short explanation aligned to values/roles,
+	•	optionally a single “micro-intervention” from a curated library,
+	•	optionally one question only if necessary to unblock a decision.
+
+Step 4 — Policy + validation layer (non-LLM)
+
+Before persisting:
+	•	Enforce hard constraints:
+	•	max planned minutes, blocked windows, no-notification windows, content boundaries.
+	•	Enforce business invariants:
+	•	single active experiment,
+	•	draft-only edits for experiments,
+	•	etc. (already in your aggregates).
+	•	Ensure the LLM’s choice is still feasible; if not, auto-fallback to next best candidate and log.
+
+Step 5 — Persist outputs as first-class artifacts
+
+Store:
+	•	Recommendation (what the user sees)
+	•	RecommendationTrace (why)
+	•	AgentRun (inputs, versions, latency, model metadata)
+
+Your system design doc already calls out “recommendation trace” as core.  ￼
+
+Step 6 — Outcome capture
+
+When the user interacts:
+	•	Accepted / dismissed / swapped to alternative
+	•	Completion correlation (did they complete the task/habit?)
+	•	Downstream metric movement (over time)
+
+Then the learning engine updates weights.
+
+⸻
+
+What to store: minimal new domain objects
+
+1) Recommendation (user-facing)
+
+Fields (conceptual):
+	•	Id, UserId, CreatedAt
+	•	Type (NBA, PlanAdjustment, HabitModeSuggestion, ExperimentProposal, TriagePrompt, ReviewPrompt)
+	•	Payload (structured: entity IDs, time estimates, alternatives)
+	•	RationaleText
+	•	Status (Proposed, Accepted, Dismissed, Applied, Expired)
+	•	ExpiresAt (e.g., end of day)
+
+2) RecommendationTrace (debuggable + explainable)
+	•	SnapshotFeatures (energy, mode, overload score, streaks, etc.)
+	•	RulesTriggered[] (e.g., Overcommitment, TooTiredCluster, ForgotCluster)
+	•	CandidateList[] (top 10, with scores and reasons)
+	•	ChosenCandidate
+	•	PromptVersion, ModelVersion
+	•	SafetyFlags[]
+
+3) InterventionLibrary (curated, parameterized)
+
+Interventions are not free-form text. They’re structured templates + parameters, e.g.:
+	•	PlanRealism: “Drop 2 low-impact tasks” (parameter: task IDs)
+	•	FrictionReduction: “Break down scope-too-big task into 3 subtasks”
+	•	Top1FollowThrough: “Midday Top1 rescue ping at 2pm”
+	•	CheckInConsistency: “Reduce evening check-in to one-tap for 7 days”
+
+This maps directly to the diagnostic categories you already use in experiments and system design.
+
+4) UserPlaybook (learning)
+
+Store tuples:
+	•	InterventionType + ContextFeatures → SuccessWeight
+Where success can be:
+	•	acceptance rate,
+	•	accepted→completed conversion,
+	•	effect on lead metric adherence,
+	•	effect on constraint metric stability.
+
+⸻
+
+Deterministic scoring: make “Next Best Action” actually defensible
+
+You already have the raw inputs to compute NBA reliably:
+	•	Task importance / urgency: due dates (soft/hard), overdue flag, priority.  ￼
+	•	Energy match: morning energy + selected mode vs task energy cost.
+	•	Time fit: estimated minutes vs remaining capacity and buffers.
+	•	Context fit: tags like Computer, DeepWork, Home, etc.  ￼
+	•	Goal impact:
+	•	direct goal link (GoalId)
+	•	metric bindings (task completion updates metric observations)
+	•	Friction penalty: high reschedule count / repeated reschedule reasons.  ￼
+	•	Blocked penalty: dependencies unresolved.  ￼
+
+A practical pattern:
+	1.	Eligibility filter: only “doable now.”
+	2.	Score: weighted sum.
+	3.	Explain: LLM explains top factors + tradeoffs.
+
+This matches your “LLM selects among candidates” architecture.  ￼
+
+⸻
+
+How the agent drives the user via multi-timescale loops
+
+Daily loop
+
+Morning (after check-in):
+	•	Produce:
+	•	Top 1 (or propose 3 options if none selected)
+	•	2–3 support actions
+	•	habit mode recommendations (Full/Maintenance/Minimum) based on energy and recent adherence
+	•	one micro-coaching intervention (optional)
+
+(Check-in constraints + mode logic already exist.)
+
+During day (optional, based on nudge level):
+	•	If Top 1 not started by a threshold time, send “Top1 rescue” with:
+	•	1 tiny next step
+	•	offer to downgrade plan if overload detected
+
+(Use preferences NudgeLevel and no-notification windows.)  ￼
+
+Evening (after check-in):
+	•	Summarize:
+	•	Top1 outcome, blockers, energy delta, stress
+	•	Update:
+	•	friction signals, streaks
+	•	draft next-day plan (optional)
+
+(Check-in has blocker taxonomy and Top1 completion signal.)  ￼
+
+Weekly loop
+	•	Auto-generate weekly summary (lead vs lag trends, constraint violations).
+	•	Pick one experiment for next week.
+	•	Adjust targets (plan realism) if capacity mismatch persists.
+
+(System design doc calls this out explicitly.)
+
+Experiment loop (adaptive control)
+	•	Ensure single-active experiment.
+	•	During experiment: prompt for short notes if none.
+	•	At completion: compute baseline vs run (when automated later), classify outcome, update playbook.
+
+(Your experiment entity/measurement plan/results are already structured for this.)  ￼
+
+⸻
+
+Implementation blueprint: minimal steps that unlock “agentic” quickly
+
+This is the shortest path to something that will feel meaningfully agentic while staying reliable.
+
+Step 1 — Add “Recommendation + Trace” primitives
+	•	New tables: Recommendations, RecommendationTraces, AgentRuns
+	•	API endpoints:
+	•	GET /today-view (already BFF-friendly)
+	•	GET /recommendations?date=...
+	•	POST /recommendations/{id}/accept
+	•	POST /recommendations/{id}/dismiss
+	•	POST /recommendations/{id}/choose-alternative
+
+This implements the auditable “why” loop you described.  ￼
+
+Step 2 — Build TodayState + WeeklyState projections
+	•	Projection: TodayState (habits due, tasks due, energy/mode, capacity, active experiment)
+	•	Projection: WeeklyState (aggregated adherence, friction histograms, metric deltas)
+
+This keeps LLM prompts small and makes the system fast enough for daily usage.
+
+Step 3 — Deterministic NBA candidate generator
+	•	Build the eligibility + scoring algorithm in code.
+	•	Surface top 10 candidates + score breakdown.
+
+Step 4 — LLM orchestrator (bounded selection + explanation)
+	•	Feed it top candidates + diagnostic flags + profile preferences.
+	•	Output: selected NBA + explanation + optional intervention from library.
+
+Step 5 — Hook into domain events (outbox)
+	•	On morning check-in event: compute plan + recommendations.
+	•	On evening check-in: update diagnostics + next-day precompute.
+	•	On weekly job: weekly review + experiment proposal.
+
+(Check-ins and experiments already have domain event patterns.)
+
+Step 6 — Learning engine v1 (bandit)
+	•	Start with just:
+	•	per-intervention success weight,
+	•	per-context bucket (e.g., low energy vs high energy),
+	•	update weights on acceptance→completion.
+
+Then expand.
+
+⸻
+
+A concrete “agent portfolio” inside the orchestrator
+
+You can model these as internal modules (not separate services unless needed):
+	1.	State Builder: produces UserStateSnapshot
+	2.	Planner: computes capacity + candidate actions
+	3.	Diagnostician: emits ranked hypotheses (“why you’re slipping”)
+	4.	Coach (LLM): selects + explains + communicates
+	5.	Experiment Designer: proposes experiment specs aligned to your experiment model
+	6.	Learner: updates playbook weights
+
+This matches your “Planning / Diagnostic / Coaching / Learning engines” decomposition without overcomplicating it.  ￼
+
+⸻
+
+How this architecture leverages your existing feature design (no rewrites)
+	•	Check-ins already give you the minimal viable sensors and event triggers.  ￼
+	•	Tasks/habits already have the planning primitives (energy cost, context tags, schedules, variants, friction reasons).
+	•	Goals/metrics already give you a scoreboard and a place to anchor “impact.”  ￼
+	•	Experiments already provide a formal adaptation loop and single-active constraint (critical for learning signal quality).  ￼
+	•	UserProfile already provides the tuning knobs (coaching style/verbosity/nudges) and hard limits (capacity + content boundaries).  ￼
+	•	Your system design doc already defines the right “controller pipeline” philosophy and traceability requirement.  ￼
+
+⸻
+
+If you want one “north star” design rule
+
+The agent must always produce one of these outcomes:
+	1.	a feasible next action,
+	2.	a plan simplification (drop/defer), or
+	3.	a clear experiment to learn what to do next.
+
+Never “more information” as the default. That’s what drives users to goals while respecting low-input constraints.

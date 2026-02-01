@@ -60,6 +60,11 @@ public sealed class UserStateAssembler : IUserStateAssembler
         var streaks = await _habitRepository.GetStreaksAsync(userId, cancellationToken);
         var checkInStreak = await _checkInRepository.CalculateStreakAsync(userId, today, cancellationToken);
 
+        if (userProfile == null)
+        {
+            throw new InvalidOperationException($"User profile not found for user ID: {userId}");
+        }
+
         // Determine source types from goal metric bindings
         var goalMetricSourceHints = goals
             .SelectMany(g => g.Metrics)
@@ -222,45 +227,41 @@ public sealed class UserStateAssembler : IUserStateAssembler
             .ToList();
 
         // Map user profile (if exists)
-        UserProfileSnapshot? profileSnapshot = null;
-        if (userProfile is not null)
-        {
-            profileSnapshot = new UserProfileSnapshot(
-                Timezone: userProfile.Timezone.IanaId,
-                Locale: userProfile.Locale.Code,
-                Values: userProfile.Values
-                    .OrderBy(v => v.Rank)
-                    .Select(v => new UserValueSnapshot(v.Label, v.Key, v.Rank))
-                    .ToList(),
-                Roles: userProfile.Roles
-                    .Select(r => new UserRoleSnapshot(
-                        r.Id, r.Label, r.Key, r.Rank, r.SeasonPriority,
-                        r.MinWeeklyMinutes, r.TargetWeeklyMinutes,
-                        r.Tags, r.Status == Domain.Entities.UserProfile.RoleStatus.Active))
-                    .ToList(),
-                CurrentSeason: userProfile.CurrentSeason is not null
-                    ? new SeasonSnapshot(
-                        userProfile.CurrentSeason.Id,
-                        userProfile.CurrentSeason.Label,
-                        userProfile.CurrentSeason.Type.ToString(),
-                        userProfile.CurrentSeason.Intensity,
-                        userProfile.CurrentSeason.SuccessStatement,
-                        userProfile.CurrentSeason.NonNegotiables.ToList(),
-                        userProfile.CurrentSeason.FocusRoleIds.ToList(),
-                        userProfile.CurrentSeason.FocusGoalIds.ToList(),
-                        userProfile.CurrentSeason.StartDate,
-                        userProfile.CurrentSeason.ExpectedEndDate)
-                    : null,
-                Preferences: new PreferencesSnapshot(
-                    userProfile.Preferences.CoachingStyle.ToString(),
-                    userProfile.Preferences.ExplanationVerbosity.ToString(),
-                    userProfile.Preferences.NudgeLevel.ToString()),
-                Constraints: new ConstraintsSnapshot(
-                    userProfile.Constraints.MaxPlannedMinutesWeekday,
-                    userProfile.Constraints.MaxPlannedMinutesWeekend,
-                    userProfile.Constraints.HealthNotes,
-                    userProfile.Constraints.ContentBoundaries));
-        }
+        var profileSnapshot = new UserProfileSnapshot(
+            Timezone: userProfile.Timezone.IanaId,
+            Locale: userProfile.Locale.Code,
+            Values: userProfile.Values
+                .OrderBy(v => v.Rank)
+                .Select(v => new UserValueSnapshot(v.Label, v.Key, v.Rank))
+                .ToList(),
+            Roles: userProfile.Roles
+                .Select(r => new UserRoleSnapshot(
+                    r.Id, r.Label, r.Key, r.Rank, r.SeasonPriority,
+                    r.MinWeeklyMinutes, r.TargetWeeklyMinutes,
+                    r.Tags, r.Status == Domain.Entities.UserProfile.RoleStatus.Active))
+                .ToList(),
+            CurrentSeason: userProfile.CurrentSeason is not null
+                ? new SeasonSnapshot(
+                    userProfile.CurrentSeason.Id,
+                    userProfile.CurrentSeason.Label,
+                    userProfile.CurrentSeason.Type.ToString(),
+                    userProfile.CurrentSeason.Intensity,
+                    userProfile.CurrentSeason.SuccessStatement,
+                    userProfile.CurrentSeason.NonNegotiables.ToList(),
+                    userProfile.CurrentSeason.FocusRoleIds.ToList(),
+                    userProfile.CurrentSeason.FocusGoalIds.ToList(),
+                    userProfile.CurrentSeason.StartDate,
+                    userProfile.CurrentSeason.ExpectedEndDate)
+                : null,
+            Preferences: new PreferencesSnapshot(
+                userProfile.Preferences.CoachingStyle.ToString(),
+                userProfile.Preferences.ExplanationVerbosity.ToString(),
+                userProfile.Preferences.NudgeLevel.ToString()),
+            Constraints: new ConstraintsSnapshot(
+                userProfile.Constraints.MaxPlannedMinutesWeekday,
+                userProfile.Constraints.MaxPlannedMinutesWeekend,
+                userProfile.Constraints.HealthNotes,
+                userProfile.Constraints.ContentBoundaries));
 
         return new UserStateSnapshot(
             userId, profileSnapshot, goalSnapshots, habitSnapshots, taskSnapshots,
